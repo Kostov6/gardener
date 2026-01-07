@@ -207,7 +207,7 @@ func (r *Reconciler) instantiateComponents(
 	if err != nil {
 		return
 	}
-	c.clusterAutoscaler = r.newClusterAutoscaler()
+	c.clusterAutoscaler = r.newClusterAutoscaler(log)
 	c.dwdWeeder, c.dwdProber, err = r.newDependencyWatchdogs(seed.GetInfo().Spec.Settings)
 	if err != nil {
 		return
@@ -849,8 +849,13 @@ func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) 
 	)
 }
 
-func (r *Reconciler) newClusterAutoscaler() component.DeployWaiter {
-	return clusterautoscaler.NewBootstrapper(r.SeedClientSet.Client(), r.GardenNamespace)
+func (r *Reconciler) newClusterAutoscaler(log logr.Logger) component.DeployWaiter {
+	return component.NewBuilder().
+		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
+		Namespace(func() string { return r.GardenNamespace }).
+		WithResources(func() component.Resources { return clusterautoscaler.NewBootstrapResources() }).
+		Logger(func() logr.Logger { return log.WithValues("component-alt", "CA-bootstrapper") }).
+		Build()
 }
 
 func (r *Reconciler) newClusterIdentity(seed *gardencorev1beta1.Seed) component.DeployWaiter {
