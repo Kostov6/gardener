@@ -7,6 +7,8 @@ package clusterautoscaler
 import (
 	"context"
 
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
+
 	"github.com/gardener/gardener/pkg/component"
 	machinev1alpha1 "github.com/gardener/machine-controller-manager/pkg/apis/machine/v1alpha1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -47,3 +49,10 @@ func (br *bootstrapResources) All(ctx context.Context) ([]component.Bundle, erro
 // NewBootstrapResources returns a renderer for the cluster-autoscaler bootstrap resources.
 // It exposes the unexported implementation via the public component.Resources interface.
 func NewBootstrapResources() component.Resources { return &bootstrapResources{} }
+
+func NewBuilder() *component.Builder {
+	return component.NewBuilder().
+		SeedComponent(func(_ *gardencorev1beta1.Seed) component.Resources {
+			return NewBootstrapResources()
+		})
+}

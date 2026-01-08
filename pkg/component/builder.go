@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/managedresources"
 	"github.com/go-logr/logr"
@@ -136,6 +137,12 @@ type Builder struct {
 	namespaceFn  func() string
 	resourcesFn  func() Resources
 	loggerFn     func() logr.Logger
+	// Optional shoot-aware mapping: if set, Build will derive Resources from the Shoot.
+	shoot          *gardencorev1beta1.Shoot
+	shootComponent func(*gardencorev1beta1.Shoot) Resources
+	// Optional seed-aware mapping: if set, Build will derive Resources from the Seed.
+	seed          *gardencorev1beta1.Seed
+	seedComponent func(*gardencorev1beta1.Seed) Resources
 }
 
 // NewBuilder returns a new Builder instance.
@@ -153,6 +160,26 @@ func (b *Builder) WithResources(fn func() Resources) *Builder { b.resourcesFn = 
 // Logger supplies a logger lazily for simpleDeployWater to emit logs.
 func (b *Builder) Logger(fn func() logr.Logger) *Builder { b.loggerFn = fn; return b }
 
+// WithShoot supplies a Shoot object for mapper-based resource derivation.
+// If Map was configured, Build will call the mapper with this Shoot to obtain Resources.
+func (b *Builder) WithShoot(shoot *gardencorev1beta1.Shoot) *Builder { b.shoot = shoot; return b }
+
+// Map configures a function to derive Resources from a Shoot object.
+// When set, and if WithResources was not provided, Build will use this mapper.
+func (b *Builder) ShootComponent(fn func(*gardencorev1beta1.Shoot) Resources) *Builder {
+	b.shootComponent = fn
+	return b
+}
+
+// WithSeed supplies a Seed object for mapper-based resource derivation.
+func (b *Builder) WithSeed(seed *gardencorev1beta1.Seed) *Builder { b.seed = seed; return b }
+
+// SeedComponent configures a function to derive Resources from a Seed object.
+func (b *Builder) SeedComponent(fn func(*gardencorev1beta1.Seed) Resources) *Builder {
+	b.seedComponent = fn
+	return b
+}
+
 // Build creates the DeployWaiter.
 func (b *Builder) Build() DeployWaiter {
 	var (
@@ -167,8 +194,13 @@ func (b *Builder) Build() DeployWaiter {
 	if b.namespaceFn != nil {
 		ns = b.namespaceFn()
 	}
+	// Prefer explicit WithResources; otherwise fall back to mapper if configured.
 	if b.resourcesFn != nil {
 		rs = b.resourcesFn()
+	} else if b.shootComponent != nil {
+		rs = b.shootComponent(b.shoot)
+	} else if b.seedComponent != nil {
+		rs = b.seedComponent(b.seed)
 	}
 	if b.loggerFn != nil {
 		lg = b.loggerFn()

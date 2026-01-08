@@ -45,7 +45,8 @@ func (r *resources) All(ctx context.Context) ([]component.Bundle, error) { //nol
 		ObjectMeta: metav1.ObjectMeta{
 			Name: metav1.NamespaceSystem,
 			Labels: map[string]string{
-				v1beta1constants.GardenerPurpose:                 metav1.NamespaceSystem,
+				"source":                         "builder",
+				v1beta1constants.GardenerPurpose: metav1.NamespaceSystem,
 				resourcesv1alpha1.HighAvailabilityConfigConsider: "true",
 			},
 			Annotations: map[string]string{
@@ -58,4 +59,11 @@ func (r *resources) All(ctx context.Context) ([]component.Bundle, error) { //nol
 		Name:    managedResourceName,
 		Objects: []client.Object{kubeSystemNamespace},
 	}}, nil
+}
+
+func NewBuilder() *component.Builder {
+	return component.NewBuilder().
+		ShootComponent(func(shoot *gardencorev1beta1.Shoot) component.Resources {
+			return NewResources(shoot.Spec.Provider.Workers)
+		})
 }
