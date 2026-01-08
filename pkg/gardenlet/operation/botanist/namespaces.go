@@ -230,7 +230,11 @@ func (b *Botanist) WaitUntilSeedNamespaceDeleted(ctx context.Context) error {
 
 // DefaultShootNamespaces returns a deployer for the shoot namespaces.
 func (b *Botanist) DefaultShootNamespaces() component.DeployWaiter {
-	return namespaces.New(b.SeedClientSet.Client(), b.Shoot.ControlPlaneNamespace, b.Shoot.GetInfo().Spec.Provider.Workers)
+	return component.NewBuilder().
+		SeedClient(func() client.Client { return b.SeedClientSet.Client() }).
+		Namespace(func() string { return b.Shoot.ControlPlaneNamespace }).
+		WithResources(func() component.Resources { return namespaces.NewResources(b.Shoot.GetInfo().Spec.Provider.Workers) }).
+		Build()
 }
 
 // getShootRequiredExtensionTypes returns all extension types that are enabled or explicitly disabled for the shoot.
