@@ -814,11 +814,11 @@ func (r *Reconciler) newPrometheusOperator() (component.DeployWaiter, error) {
 }
 
 func (r *Reconciler) newPersesOperator() (component.DeployWaiter, error) {
-	return sharedcomponent.NewPersesOperator(
-		r.SeedClientSet.Client(),
-		r.GardenNamespace,
-		v1beta1constants.PriorityClassNameSeedSystem600,
-	)
+	return persesoperator.NewBuilder().
+		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
+		Namespace(func() string { return r.GardenNamespace }).
+		Build("seed"), nil
+
 }
 
 func (r *Reconciler) newFluentOperator() (component.DeployWaiter, error) {
@@ -855,7 +855,7 @@ func (r *Reconciler) newClusterAutoscaler(log logr.Logger, seed *gardencorev1bet
 		Namespace(func() string { return r.GardenNamespace }).
 		WithSeed(seed).
 		Logger(func() logr.Logger { return log.WithValues("component-alt", "CA-bootstrapper") }).
-		Build()
+		Build("seed")
 }
 
 func (r *Reconciler) newClusterIdentity(seed *gardencorev1beta1.Seed) component.DeployWaiter {

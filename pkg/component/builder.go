@@ -9,6 +9,7 @@ import (
 	"time"
 
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
+	operatorv1alpha1 "github.com/gardener/gardener/pkg/apis/operator/v1alpha1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/managedresources"
 	"github.com/go-logr/logr"
@@ -27,6 +28,7 @@ type Resources interface {
 type Bundle struct {
 	Name    string
 	Objects []client.Object
+	Labels  map[string]string
 }
 
 // simpleDeployWater is a simple DeployWaiter implementation that applies Bundles
@@ -59,8 +61,14 @@ func (s *simpleDeployWater) Deploy(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := managedresources.CreateForSeed(ctx, s.client, s.namespace, b.Name, false, data); err != nil {
-			return err
+		if len(b.Labels) > 0 {
+			if err := managedresources.CreateForSeedWithLabels(ctx, s.client, s.namespace, b.Name, false, b.Labels, data); err != nil {
+				return err
+			}
+		} else {
+			if err := managedresources.CreateForSeed(ctx, s.client, s.namespace, b.Name, false, data); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -143,6 +151,9 @@ type Builder struct {
 	// Optional seed-aware mapping: if set, Build will derive Resources from the Seed.
 	seed          *gardencorev1beta1.Seed
 	seedComponent func(*gardencorev1beta1.Seed) Resources
+	// Optional garden-aware mapping: if set, Build will derive Resources from the Garden.
+	garden          *operatorv1alpha1.Garden
+	gardenComponent func(*operatorv1alpha1.Garden) Resources
 }
 
 // NewBuilder returns a new Builder instance.
@@ -180,8 +191,17 @@ func (b *Builder) SeedComponent(fn func(*gardencorev1beta1.Seed) Resources) *Bui
 	return b
 }
 
+// WithGarden supplies a Garden object for mapper-based resource derivation.
+func (b *Builder) WithGarden(garden *operatorv1alpha1.Garden) *Builder { b.garden = garden; return b }
+
+// GardenComponent configures a function to derive Resources from a Garden object.
+func (b *Builder) GardenComponent(fn func(*operatorv1alpha1.Garden) Resources) *Builder {
+	b.gardenComponent = fn
+	return b
+}
+
 // Build creates the DeployWaiter.
-func (b *Builder) Build() DeployWaiter {
+func (b *Builder) Build(componentType string) DeployWaiter {
 	var (
 		c  client.Client
 		ns string
@@ -194,13 +214,34 @@ func (b *Builder) Build() DeployWaiter {
 	if b.namespaceFn != nil {
 		ns = b.namespaceFn()
 	}
-	// Prefer explicit WithResources; otherwise fall back to mapper if configured.
+	// Prefer explicit WithResources; otherwise select by declared componentType when provided.
 	if b.resourcesFn != nil {
 		rs = b.resourcesFn()
-	} else if b.shootComponent != nil {
-		rs = b.shootComponent(b.shoot)
-	} else if b.seedComponent != nil {
-		rs = b.seedComponent(b.seed)
+	} else {
+		switch componentType {
+		case "shoot":
+			if b.shootComponent != nil {
+				rs = b.shootComponent(b.shoot)
+			}
+		case "seed":
+			if b.seedComponent != nil {
+				rs = b.seedComponent(b.seed)
+			}
+		case "garden":
+			if b.gardenComponent != nil {
+				rs = b.gardenComponent(b.garden)
+			}
+		}
+		// Fallback to previous precedence if componentType was empty or no mapper was configured.
+		if rs == nil {
+			if b.shootComponent != nil {
+				rs = b.shootComponent(b.shoot)
+			} else if b.seedComponent != nil {
+				rs = b.seedComponent(b.seed)
+			} else if b.gardenComponent != nil {
+				rs = b.gardenComponent(b.garden)
+			}
+		}
 	}
 	if b.loggerFn != nil {
 		lg = b.loggerFn()

@@ -234,7 +234,7 @@ func (b *Botanist) DefaultShootNamespaces() component.DeployWaiter {
 		SeedClient(func() client.Client { return b.SeedClientSet.Client() }).
 		Namespace(func() string { return b.Shoot.ControlPlaneNamespace }).
 		WithShoot(b.Shoot.GetInfo()).
-		Build()
+		Build("shoot")
 }
 
 // getShootRequiredExtensionTypes returns all extension types that are enabled or explicitly disabled for the shoot.

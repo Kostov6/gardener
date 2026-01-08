@@ -1511,11 +1511,10 @@ func (r *Reconciler) newBlackboxExporter(garden *operatorv1alpha1.Garden, secret
 }
 
 func (r *Reconciler) newPersesOperator() (component.DeployWaiter, error) {
-	return sharedcomponent.NewPersesOperator(
-		r.RuntimeClientSet.Client(),
-		r.GardenNamespace,
-		v1beta1constants.PriorityClassNameGardenSystem100,
-	)
+	return persesoperator.NewBuilder().
+		SeedClient(func() client.Client { return r.RuntimeClientSet.Client() }).
+		Namespace(func() string { return r.GardenNamespace }).
+		Build("garden"), nil
 }
 
 func (r *Reconciler) newGardenerDiscoveryServer(
