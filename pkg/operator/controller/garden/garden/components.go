@@ -1375,11 +1375,10 @@ func (r *Reconciler) newVali() (component.Deployer, error) {
 }
 
 func (r *Reconciler) newPrometheusOperator() (component.DeployWaiter, error) {
-	return sharedcomponent.NewPrometheusOperator(
-		r.RuntimeClientSet.Client(),
-		r.GardenNamespace,
-		v1beta1constants.PriorityClassNameGardenSystem100,
-	)
+	return prometheusoperator.NewBuilder().
+		SeedClient(func() client.Client { return r.RuntimeClientSet.Client() }).
+		Namespace(func() string { return r.GardenNamespace }).
+		Build("garden"), nil
 }
 
 func (r *Reconciler) newAlertmanager(log logr.Logger, garden *operatorv1alpha1.Garden, secretsManager secretsmanager.Interface, ingressDomain string, wildcardCertSecretName *string) (alertmanager.Interface, error) {

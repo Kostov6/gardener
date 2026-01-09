@@ -806,11 +806,10 @@ func (r *Reconciler) newKubeStateMetrics() (component.DeployWaiter, error) {
 }
 
 func (r *Reconciler) newPrometheusOperator() (component.DeployWaiter, error) {
-	return sharedcomponent.NewPrometheusOperator(
-		r.SeedClientSet.Client(),
-		r.GardenNamespace,
-		v1beta1constants.PriorityClassNameSeedSystem600,
-	)
+	return prometheusoperator.NewBuilder().
+		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
+		Namespace(func() string { return r.GardenNamespace }).
+		Build("seed"), nil
 }
 
 func (r *Reconciler) newPersesOperator() (component.DeployWaiter, error) {
@@ -846,7 +845,6 @@ func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) 
 		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
 		WithGardenletConfig(&r.Config).
-		Enabled(gardenlethelper.IsLoggingEnabled(&r.Config)).
 		Build("seed"), nil
 }
 
