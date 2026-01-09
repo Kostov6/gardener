@@ -146,7 +146,7 @@ func (r *Reconciler) runDeleteSeedFlow(
 		})
 		destroyClusterAutoscaler = g.Add(flow.Task{
 			Name: "Destroying cluster-autoscaler resources",
-			Fn:   component.OpDestroyAndWait(c.clusterAutoscaler).Destroy,
+			Fn:   component.OpDestroyAndWait(r.Registry.Component("cluster-autoscaler")).Destroy,
 		})
 		destroyNginxIngress = g.Add(flow.Task{
 			Name: "Destroying nginx-ingress",

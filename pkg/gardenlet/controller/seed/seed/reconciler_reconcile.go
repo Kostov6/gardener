@@ -334,7 +334,7 @@ func (r *Reconciler) runReconcileSeedFlow(
 		})
 		_ = g.Add(flow.Task{
 			Name:         "Deploying cluster-autoscaler resources",
-			Fn:           c.clusterAutoscaler.Deploy,
+			Fn:           r.Registry.Component("cluster-autoscaler").Deploy,
 			Dependencies: flow.NewTaskIDs(syncPointReadyForSystemComponents),
 		})
 		_ = g.Add(flow.Task{
