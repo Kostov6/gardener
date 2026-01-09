@@ -203,7 +203,7 @@ func (r *Reconciler) runDeleteSeedFlow(
 		})
 		destroyOpenTelemetryOperator = g.Add(flow.Task{
 			Name:   "Destroy OpenTelemetry Operator",
-			Fn:     component.OpDestroyAndWait(c.openTelemetryOperator).Destroy,
+			Fn:     component.OpDestroyAndWait(r.Registry.Component("opentelemetry-operator")).Destroy,
 			SkipIf: seedIsGarden,
 		})
 		destroyFluentBit = g.Add(flow.Task{

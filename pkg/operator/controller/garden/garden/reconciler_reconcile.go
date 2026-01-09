@@ -576,7 +576,7 @@ func (r *Reconciler) reconcile(
 		})
 		_ = g.Add(flow.Task{
 			Name: "Deploying OpenTelemetry Operator",
-			Fn:   c.openTelemetryOperator.Deploy,
+			Fn:   c.registry.Component("opentelemetry-operator").Deploy,
 		})
 		_ = g.Add(flow.Task{
 			Name: "Deploying Alertmanager",

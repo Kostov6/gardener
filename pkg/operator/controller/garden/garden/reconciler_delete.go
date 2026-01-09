@@ -320,7 +320,7 @@ func (r *Reconciler) delete(
 		})
 		destroyOpenTelemetryOperator = g.Add(flow.Task{
 			Name:         "Destroying OpenTelemetry Operator",
-			Fn:           component.OpDestroyAndWait(c.openTelemetryOperator).Destroy,
+			Fn:           component.OpDestroyAndWait(c.registry.Component("opentelemetry-operator")).Destroy,
 			Dependencies: flow.NewTaskIDs(syncPointVirtualGardenControlPlaneDestroyed),
 		})
 		destroyFluentOperatorCustomResources = g.Add(flow.Task{
