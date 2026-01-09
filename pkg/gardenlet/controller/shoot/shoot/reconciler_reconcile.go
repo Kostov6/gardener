@@ -427,12 +427,12 @@ func (r *Reconciler) runReconcileShootFlow(ctx context.Context, o *operation.Ope
 		})
 		deployShootNamespaces = g.Add(flow.Task{
 			Name:         "Deploying shoot namespaces system component",
-			Fn:           flow.TaskFn(botanist.Shoot.Components.SystemComponents.Namespaces.Deploy).RetryUntilTimeout(defaultInterval, defaultTimeout),
+			Fn:           flow.TaskFn(o.Shoot.Components.Registry.Component("shoot-core-namespaces").Deploy).RetryUntilTimeout(defaultInterval, defaultTimeout),
 			Dependencies: flow.NewTaskIDs(deployGardenerResourceManager),
 		})
 		waitUntilShootNamespacesReady = g.Add(flow.Task{
 			Name:         "Waiting until shoot namespaces have been reconciled",
-			Fn:           botanist.Shoot.Components.SystemComponents.Namespaces.Wait,
+			Fn:           o.Shoot.Components.Registry.Component("shoot-core-namespaces").Wait,
 			SkipIf:       o.Shoot.HibernationEnabled || skipReadiness,
 			Dependencies: flow.NewTaskIDs(waitUntilGardenerResourceManagerReady, deployShootNamespaces),
 		})
