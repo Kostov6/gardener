@@ -243,14 +243,12 @@ func (r *Reconciler) instantiateComponents(
 		return
 	}
 
-	r.Registry = registry.NewRegistry()
-
-	err = r.Registry.Client(r.SeedClientSet.Client()).
+	r.Registry = registry.NewRegistry().
+		Client(r.SeedClientSet.Client()).
 		Namespace(r.GardenNamespace).
-		WithGardenletConfig(&r.Config).Build("seed")
-	if err != nil {
-		return c, fmt.Errorf("failed building component registry for seed: %w", err)
-	}
+		WithSeed(seed.GetInfo()).
+		WithGardenletConfig(&r.Config).
+		Build("seed")
 
 	c.cachePrometheus, err = r.newCachePrometheus(log, seed, seedIsShoot)
 	if err != nil {

@@ -27,8 +27,6 @@ import (
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	resourcesv1alpha1 "github.com/gardener/gardener/pkg/apis/resources/v1alpha1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
-	"github.com/gardener/gardener/pkg/component"
-	"github.com/gardener/gardener/pkg/component/shoot/namespaces"
 	"github.com/gardener/gardener/pkg/controllerutils"
 	"github.com/gardener/gardener/pkg/utils/retry"
 )
@@ -226,15 +224,6 @@ func (b *Botanist) WaitUntilSeedNamespaceDeleted(ctx context.Context) error {
 		b.Logger.Info("Waiting until the namespace has been cleaned up and deleted in the Seed cluster", "namespaceName", b.Shoot.ControlPlaneNamespace)
 		return retry.MinorError(fmt.Errorf("namespace %q is not yet cleaned up", b.Shoot.ControlPlaneNamespace))
 	})
-}
-
-// DefaultShootNamespaces returns a deployer for the shoot namespaces.
-func (b *Botanist) DefaultShootNamespaces() component.DeployWaiter {
-	return namespaces.NewBuilder().
-		Client(b.SeedClientSet.Client()).
-		Namespace(b.Shoot.ControlPlaneNamespace).
-		WithShoot(b.Shoot.GetInfo()).
-		Build("shoot")
 }
 
 // getShootRequiredExtensionTypes returns all extension types that are enabled or explicitly disabled for the shoot.

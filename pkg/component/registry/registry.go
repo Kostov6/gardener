@@ -42,7 +42,7 @@ func NewRegistry() *Registry {
 
 // Build configures all builders with the registry-supplied functions/objects and builds
 // deployers for the given destination: "shoot", "seed", or "garden".
-func (r *Registry) Build(componentType string) error {
+func (r *Registry) Build(componentType string) *Registry {
 	r.buildComponents = make(map[string]component.DeployWaiter)
 
 	for _, b := range r.components {
@@ -65,7 +65,7 @@ func (r *Registry) Build(componentType string) error {
 			r.buildComponents[b.Name()] = dw
 		}
 	}
-	return nil
+	return r
 }
 
 // SeedClient supplies the seed client lazily to all component builders.
