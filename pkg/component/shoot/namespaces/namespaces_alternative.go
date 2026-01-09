@@ -63,7 +63,7 @@ func (r *resources) All(ctx context.Context) ([]component.Bundle, error) { //nol
 
 func NewBuilder() *component.Builder {
 	return component.NewBuilder().
-		ShootComponent(func(shoot *gardencorev1beta1.Shoot) component.Resources {
-			return NewResources(shoot.Spec.Provider.Workers)
+		ShootComponent(func(shoot *gardencorev1beta1.Shoot) (component.Resources, bool) {
+			return NewResources(shoot.Spec.Provider.Workers), true
 		})
 }

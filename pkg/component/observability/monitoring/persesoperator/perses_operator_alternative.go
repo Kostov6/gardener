@@ -55,16 +55,16 @@ func NewBuilder() *component.Builder {
 	}
 
 	return component.NewBuilder().
-		SeedComponent(func(_ *gardencorev1beta1.Seed, _ *gardenletconfigv1alpha1.GardenletConfiguration) component.Resources {
+		SeedComponent(func(_ *gardencorev1beta1.Seed, _ *gardenletconfigv1alpha1.GardenletConfiguration) (component.Resources, bool) {
 			return NewResources(v1beta1constants.GardenNamespace, Values{
 				Image:             image.String(),
 				PriorityClassName: v1beta1constants.PriorityClassNameSeedSystem600,
-			})
+			}), true
 		}).
-		GardenComponent(func(_ *v1alpha1.Garden) component.Resources {
+		GardenComponent(func(_ *v1alpha1.Garden) (component.Resources, bool) {
 			return NewResources(v1beta1constants.GardenNamespace, Values{
 				Image:             image.String(),
 				PriorityClassName: v1beta1constants.PriorityClassNameGardenSystem100,
-			})
+			}), true
 		})
 }

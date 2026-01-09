@@ -1545,7 +1545,6 @@ func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) 
 	return oteloperator.NewBuilder().
 		SeedClient(func() client.Client { return r.RuntimeClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
-		Enabled(true).
 		Build("garden"), nil
 }
 

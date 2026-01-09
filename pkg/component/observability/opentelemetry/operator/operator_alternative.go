@@ -13,6 +13,7 @@ import (
 	operatorv1alpha1 "github.com/gardener/gardener/pkg/apis/operator/v1alpha1"
 	"github.com/gardener/gardener/pkg/component"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
+	gardenlethelper "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1/helper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -58,16 +59,16 @@ func NewBuilder() *component.Builder {
 	}
 
 	return component.NewBuilder().
-		SeedComponent(func(_ *gardencorev1beta1.Seed, _ *gardenletconfigv1alpha1.GardenletConfiguration) component.Resources {
+		SeedComponent(func(_ *gardencorev1beta1.Seed, config *gardenletconfigv1alpha1.GardenletConfiguration) (component.Resources, bool) {
 			return NewResources(v1beta1constants.GardenNamespace, Values{
 				Image:             image.String(),
 				PriorityClassName: v1beta1constants.PriorityClassNameSeedSystem600,
-			})
+			}), gardenlethelper.IsLoggingEnabled(config)
 		}).
-		GardenComponent(func(_ *operatorv1alpha1.Garden) component.Resources {
+		GardenComponent(func(_ *operatorv1alpha1.Garden) (component.Resources, bool) {
 			return NewResources(v1beta1constants.GardenNamespace, Values{
 				Image:             image.String(),
 				PriorityClassName: v1beta1constants.PriorityClassNameGardenSystem100,
-			})
+			}), true
 		})
 }
