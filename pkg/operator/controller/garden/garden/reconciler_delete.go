@@ -345,7 +345,7 @@ func (r *Reconciler) delete(
 		})
 		destroyPersesOperator = g.Add(flow.Task{
 			Name: "Destroying perses-operator",
-			Fn:   component.OpDestroyAndWait(c.persesOperator).Destroy,
+			Fn:   component.OpDestroyAndWait(c.registry.Component("perses-operator")).Destroy,
 		})
 		syncPointCleanedUp = flow.NewTaskIDs(
 			waitUntilExtensionResourcesDeleted,

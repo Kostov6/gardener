@@ -633,7 +633,7 @@ func (r *Reconciler) reconcile(
 		})
 		_ = g.Add(flow.Task{
 			Name: "Deploying perses-operator",
-			Fn:   c.persesOperator.Deploy,
+			Fn:   c.registry.Component("perses-operator").Deploy,
 		})
 	)
 

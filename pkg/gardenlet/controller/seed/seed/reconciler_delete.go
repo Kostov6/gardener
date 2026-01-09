@@ -231,7 +231,7 @@ func (r *Reconciler) runDeleteSeedFlow(
 		})
 		destroyPersesOperator = g.Add(flow.Task{
 			Name:   "Destroy Perses Operator",
-			Fn:     component.OpDestroyAndWait(c.persesOperator).Destroy,
+			Fn:     component.OpDestroyAndWait(r.Registry.Component("perses-operator")).Destroy,
 			SkipIf: seedIsGarden,
 		})
 		destroyExtensionResources = g.Add(flow.Task{

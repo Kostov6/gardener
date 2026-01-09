@@ -483,7 +483,7 @@ func (r *Reconciler) runReconcileSeedFlow(
 		})
 		_ = g.Add(flow.Task{
 			Name:         "Deploying Perses Operator",
-			Fn:           c.persesOperator.Deploy,
+			Fn:           r.Registry.Component("perses-operator").Deploy,
 			Dependencies: flow.NewTaskIDs(syncPointReadyForSystemComponents),
 			SkipIf:       seedIsGarden,
 		})
