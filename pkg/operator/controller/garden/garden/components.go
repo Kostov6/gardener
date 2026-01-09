@@ -1376,7 +1376,7 @@ func (r *Reconciler) newVali() (component.Deployer, error) {
 
 func (r *Reconciler) newPrometheusOperator() (component.DeployWaiter, error) {
 	return prometheusoperator.NewBuilder().
-		SeedClient(func() client.Client { return r.RuntimeClientSet.Client() }).
+		Client(func() client.Client { return r.RuntimeClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
 		Build("garden"), nil
 }
@@ -1511,7 +1511,7 @@ func (r *Reconciler) newBlackboxExporter(garden *operatorv1alpha1.Garden, secret
 
 func (r *Reconciler) newPersesOperator() (component.DeployWaiter, error) {
 	return persesoperator.NewBuilder().
-		SeedClient(func() client.Client { return r.RuntimeClientSet.Client() }).
+		Client(func() client.Client { return r.RuntimeClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
 		Build("garden"), nil
 }
@@ -1542,7 +1542,7 @@ func (r *Reconciler) newGardenerDiscoveryServer(
 
 func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) {
 	return oteloperator.NewBuilder().
-		SeedClient(func() client.Client { return r.RuntimeClientSet.Client() }).
+		Client(func() client.Client { return r.RuntimeClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
 		Build("garden"), nil
 }

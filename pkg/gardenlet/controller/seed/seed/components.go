@@ -807,14 +807,14 @@ func (r *Reconciler) newKubeStateMetrics() (component.DeployWaiter, error) {
 
 func (r *Reconciler) newPrometheusOperator() (component.DeployWaiter, error) {
 	return prometheusoperator.NewBuilder().
-		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
+		Client(func() client.Client { return r.SeedClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
 		Build("seed"), nil
 }
 
 func (r *Reconciler) newPersesOperator() (component.DeployWaiter, error) {
 	return persesoperator.NewBuilder().
-		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
+		Client(func() client.Client { return r.SeedClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
 		WithGardenletConfig(&r.Config).
 		Build("seed"), nil
@@ -842,7 +842,7 @@ func (r *Reconciler) newFluentBit() (component.DeployWaiter, error) {
 
 func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) {
 	return oteloperator.NewBuilder().
-		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
+		Client(func() client.Client { return r.SeedClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
 		WithGardenletConfig(&r.Config).
 		Build("seed"), nil
@@ -850,7 +850,7 @@ func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) 
 
 func (r *Reconciler) newClusterAutoscaler(log logr.Logger, seed *gardencorev1beta1.Seed) component.DeployWaiter {
 	return clusterautoscaler.NewBuilder().
-		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
+		Client(func() client.Client { return r.SeedClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
 		WithSeed(seed).
 		Logger(func() logr.Logger { return log.WithValues("component-alt", "CA-bootstrapper") }).

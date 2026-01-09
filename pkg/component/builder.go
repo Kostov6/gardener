@@ -162,10 +162,10 @@ func (s *simpleDeployWater) WaitCleanup(ctx context.Context) error {
 // Builder constructs a simple DeployWaiter using functional parameters.
 // Scope is seed-only for the first iteration.
 type Builder struct {
-	seedClientFn func() client.Client
-	namespaceFn  func() string
-	resourcesFn  func() Resources
-	loggerFn     func() logr.Logger
+	clientFn    func() client.Client
+	namespaceFn func() string
+	resourcesFn func() Resources
+	loggerFn    func() logr.Logger
 	// Optional shoot-aware mapping: if set, Build will derive Resources from the Shoot.
 	shoot          *gardencorev1beta1.Shoot
 	shootComponent func(*gardencorev1beta1.Shoot) (Resources, bool)
@@ -182,7 +182,7 @@ type Builder struct {
 func NewBuilder() *Builder { return &Builder{} }
 
 // SeedClient supplies the seed client lazily.
-func (b *Builder) SeedClient(fn func() client.Client) *Builder { b.seedClientFn = fn; return b }
+func (b *Builder) Client(fn func() client.Client) *Builder { b.clientFn = fn; return b }
 
 // Namespace supplies the seed namespace lazily.
 func (b *Builder) Namespace(fn func() string) *Builder { b.namespaceFn = fn; return b }
@@ -238,8 +238,8 @@ func (b *Builder) Build(componentType string) DeployWaiter {
 		rs Resources
 		lg logr.Logger
 	)
-	if b.seedClientFn != nil {
-		c = b.seedClientFn()
+	if b.clientFn != nil {
+		c = b.clientFn()
 	}
 	if b.namespaceFn != nil {
 		ns = b.namespaceFn()
