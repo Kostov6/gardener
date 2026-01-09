@@ -11,6 +11,7 @@ import (
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	operatorv1alpha1 "github.com/gardener/gardener/pkg/apis/operator/v1alpha1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
+	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 	"github.com/gardener/gardener/pkg/utils/managedresources"
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -145,19 +146,21 @@ type Builder struct {
 	namespaceFn  func() string
 	resourcesFn  func() Resources
 	loggerFn     func() logr.Logger
+	enabled      bool
 	// Optional shoot-aware mapping: if set, Build will derive Resources from the Shoot.
 	shoot          *gardencorev1beta1.Shoot
 	shootComponent func(*gardencorev1beta1.Shoot) Resources
 	// Optional seed-aware mapping: if set, Build will derive Resources from the Seed.
-	seed          *gardencorev1beta1.Seed
-	seedComponent func(*gardencorev1beta1.Seed) Resources
+	seed            *gardencorev1beta1.Seed
+	gardenletConfig *gardenletconfigv1alpha1.GardenletConfiguration
+	seedComponent   func(*gardencorev1beta1.Seed, *gardenletconfigv1alpha1.GardenletConfiguration) Resources
 	// Optional garden-aware mapping: if set, Build will derive Resources from the Garden.
 	garden          *operatorv1alpha1.Garden
 	gardenComponent func(*operatorv1alpha1.Garden) Resources
 }
 
 // NewBuilder returns a new Builder instance.
-func NewBuilder() *Builder { return &Builder{} }
+func NewBuilder() *Builder { return &Builder{enabled: true} }
 
 // SeedClient supplies the seed client lazily.
 func (b *Builder) SeedClient(fn func() client.Client) *Builder { b.seedClientFn = fn; return b }
@@ -170,6 +173,10 @@ func (b *Builder) WithResources(fn func() Resources) *Builder { b.resourcesFn = 
 
 // Logger supplies a logger lazily for simpleDeployWater to emit logs.
 func (b *Builder) Logger(fn func() logr.Logger) *Builder { b.loggerFn = fn; return b }
+
+// Enabled toggles whether the built DeployWaiter should deploy (true) or be destroyed (false).
+// When disabled, Build() wraps the resulting DeployWaiter with OpDestroyAndWait.
+func (b *Builder) Enabled(enabled bool) *Builder { b.enabled = enabled; return b }
 
 // WithShoot supplies a Shoot object for mapper-based resource derivation.
 // If Map was configured, Build will call the mapper with this Shoot to obtain Resources.
@@ -186,8 +193,14 @@ func (b *Builder) ShootComponent(fn func(*gardencorev1beta1.Shoot) Resources) *B
 func (b *Builder) WithSeed(seed *gardencorev1beta1.Seed) *Builder { b.seed = seed; return b }
 
 // SeedComponent configures a function to derive Resources from a Seed object.
-func (b *Builder) SeedComponent(fn func(*gardencorev1beta1.Seed) Resources) *Builder {
+func (b *Builder) SeedComponent(fn func(*gardencorev1beta1.Seed, *gardenletconfigv1alpha1.GardenletConfiguration) Resources) *Builder {
 	b.seedComponent = fn
+	return b
+}
+
+// WithGardenletConfig supplies Gardenlet configuration for mapper-based resource derivation in seed context.
+func (b *Builder) WithGardenletConfig(cfg *gardenletconfigv1alpha1.GardenletConfiguration) *Builder {
+	b.gardenletConfig = cfg
 	return b
 }
 
@@ -225,7 +238,7 @@ func (b *Builder) Build(componentType string) DeployWaiter {
 			}
 		case "seed":
 			if b.seedComponent != nil {
-				rs = b.seedComponent(b.seed)
+				rs = b.seedComponent(b.seed, b.gardenletConfig)
 			}
 		case "garden":
 			if b.gardenComponent != nil {
@@ -237,7 +250,7 @@ func (b *Builder) Build(componentType string) DeployWaiter {
 			if b.shootComponent != nil {
 				rs = b.shootComponent(b.shoot)
 			} else if b.seedComponent != nil {
-				rs = b.seedComponent(b.seed)
+				rs = b.seedComponent(b.seed, b.gardenletConfig)
 			} else if b.gardenComponent != nil {
 				rs = b.gardenComponent(b.garden)
 			}
@@ -246,10 +259,17 @@ func (b *Builder) Build(componentType string) DeployWaiter {
 	if b.loggerFn != nil {
 		lg = b.loggerFn()
 	}
-	return &simpleDeployWater{
+	dw := &simpleDeployWater{
 		client:    c,
 		namespace: ns,
 		resources: rs,
 		log:       lg,
 	}
+
+	var deployer DeployWaiter = dw
+	if !b.enabled {
+		deployer = OpDestroyAndWait(deployer)
+	}
+
+	return deployer
 }

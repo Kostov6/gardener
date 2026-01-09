@@ -817,6 +817,7 @@ func (r *Reconciler) newPersesOperator() (component.DeployWaiter, error) {
 	return persesoperator.NewBuilder().
 		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
 		Namespace(func() string { return r.GardenNamespace }).
+		WithGardenletConfig(&r.Config).
 		Build("seed"), nil
 
 }
@@ -841,12 +842,12 @@ func (r *Reconciler) newFluentBit() (component.DeployWaiter, error) {
 }
 
 func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) {
-	return sharedcomponent.NewOpenTelemetryOperator(
-		r.SeedClientSet.Client(),
-		r.GardenNamespace,
-		gardenlethelper.IsLoggingEnabled(&r.Config),
-		v1beta1constants.PriorityClassNameSeedSystem600,
-	)
+	return oteloperator.NewBuilder().
+		SeedClient(func() client.Client { return r.SeedClientSet.Client() }).
+		Namespace(func() string { return r.GardenNamespace }).
+		WithGardenletConfig(&r.Config).
+		Enabled(gardenlethelper.IsLoggingEnabled(&r.Config)).
+		Build("seed"), nil
 }
 
 func (r *Reconciler) newClusterAutoscaler(log logr.Logger, seed *gardencorev1beta1.Seed) component.DeployWaiter {

@@ -1542,12 +1542,11 @@ func (r *Reconciler) newGardenerDiscoveryServer(
 }
 
 func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) {
-	return sharedcomponent.NewOpenTelemetryOperator(
-		r.RuntimeClientSet.Client(),
-		r.GardenNamespace,
-		true,
-		v1beta1constants.PriorityClassNameGardenSystem100,
-	)
+	return oteloperator.NewBuilder().
+		SeedClient(func() client.Client { return r.RuntimeClientSet.Client() }).
+		Namespace(func() string { return r.GardenNamespace }).
+		Enabled(true).
+		Build("garden"), nil
 }
 
 func domainNames(domains []operatorv1alpha1.DNSDomain) []string {

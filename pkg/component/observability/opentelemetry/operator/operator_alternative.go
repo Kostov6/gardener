@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package persesoperator
+package operator
 
 import (
 	"context"
@@ -10,13 +10,13 @@ import (
 	"github.com/gardener/gardener/imagevector"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
-	"github.com/gardener/gardener/pkg/apis/operator/v1alpha1"
+	operatorv1alpha1 "github.com/gardener/gardener/pkg/apis/operator/v1alpha1"
 	"github.com/gardener/gardener/pkg/component"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// NewResources returns a Resources renderer for perses-operator using the component builder pattern.
+// NewResources returns a Resources renderer for OpenTelemetry operator using the component builder pattern.
 func NewResources(namespace string, values Values) component.Resources {
 	return &resources{namespace: namespace, values: values}
 }
@@ -28,28 +28,31 @@ type resources struct {
 
 func (r *resources) All(ctx context.Context) ([]component.Bundle, error) { //nolint:revive,unused
 	// Reuse the existing object constructors via the legacy type.
-	p := &persesOperator{namespace: r.namespace, values: r.values}
+	o := &openTelemetryOperator{namespace: r.namespace, values: r.values}
 
 	objs := []client.Object{
-		p.serviceAccount(),
-		p.deployment(),
-		p.vpa(),
-		p.clusterRole(),
-		p.clusterRoleBinding(),
+		o.serviceAccount(),
+		o.clusterRole(),
+		o.clusterRoleBinding(),
+		o.role(),
+		o.roleBinding(),
+		o.deployment(),
+		o.vpa(),
 	}
 
 	// Bundle with care label so ManagedResource is tracked under ObservabilityComponentsHealthy.
 	return []component.Bundle{
 		{
-			Name:    managedResourceName,
+			Name:    OperatorManagedResourceName,
 			Objects: objs,
 			Labels:  map[string]string{v1beta1constants.LabelCareConditionType: v1beta1constants.ObservabilityComponentsHealthy},
 		},
 	}, nil
 }
 
+// NewBuilder provides mapping-based construction for Seed and Garden contexts.
 func NewBuilder() *component.Builder {
-	image, err := imagevector.Containers().FindImage(imagevector.ContainerImageNamePersesOperator)
+	image, err := imagevector.Containers().FindImage(imagevector.ContainerImageNameOpentelemetryOperator)
 	if err != nil {
 		return nil
 	}
@@ -61,7 +64,7 @@ func NewBuilder() *component.Builder {
 				PriorityClassName: v1beta1constants.PriorityClassNameSeedSystem600,
 			})
 		}).
-		GardenComponent(func(_ *v1alpha1.Garden) component.Resources {
+		GardenComponent(func(_ *operatorv1alpha1.Garden) component.Resources {
 			return NewResources(v1beta1constants.GardenNamespace, Values{
 				Image:             image.String(),
 				PriorityClassName: v1beta1constants.PriorityClassNameGardenSystem100,

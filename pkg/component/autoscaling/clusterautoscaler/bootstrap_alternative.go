@@ -10,6 +10,7 @@ import (
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 
 	"github.com/gardener/gardener/pkg/component"
+	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 	machinev1alpha1 "github.com/gardener/machine-controller-manager/pkg/apis/machine/v1alpha1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,7 +53,7 @@ func NewBootstrapResources() component.Resources { return &bootstrapResources{} 
 
 func NewBuilder() *component.Builder {
 	return component.NewBuilder().
-		SeedComponent(func(_ *gardencorev1beta1.Seed) component.Resources {
+		SeedComponent(func(_ *gardencorev1beta1.Seed, _ *gardenletconfigv1alpha1.GardenletConfiguration) component.Resources {
 			return NewBootstrapResources()
 		})
 }
