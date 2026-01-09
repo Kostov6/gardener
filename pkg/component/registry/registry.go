@@ -1,0 +1,104 @@
+package registry
+
+import (
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
+	operatorv1alpha1 "github.com/gardener/gardener/pkg/apis/operator/v1alpha1"
+	"github.com/gardener/gardener/pkg/component"
+	"github.com/gardener/gardener/pkg/component/autoscaling/clusterautoscaler"
+	"github.com/gardener/gardener/pkg/component/observability/monitoring/persesoperator"
+	"github.com/gardener/gardener/pkg/component/observability/monitoring/prometheusoperator"
+	"github.com/gardener/gardener/pkg/component/observability/opentelemetry/operator"
+	"github.com/gardener/gardener/pkg/component/shoot/namespaces"
+	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
+	"github.com/go-logr/logr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+type Registry struct {
+	components []*component.Builder
+
+	// Common configuration functions/objects applied to all builders
+	clientFn        func() client.Client
+	namespaceFn     func() string
+	loggerFn        func() logr.Logger
+	shoot           *gardencorev1beta1.Shoot
+	seed            *gardencorev1beta1.Seed
+	garden          *operatorv1alpha1.Garden
+	gardenletConfig *gardenletconfigv1alpha1.GardenletConfiguration
+
+	// Built components for the selected destination
+	buildComponents map[string]component.DeployWaiter
+}
+
+func NewRegistry() *Registry {
+	return &Registry{
+		components: []*component.Builder{
+			namespaces.NewBuilder(),
+			clusterautoscaler.NewBuilder(),
+			operator.NewBuilder(),
+			prometheusoperator.NewBuilder(),
+			persesoperator.NewBuilder(),
+		},
+	}
+}
+
+// Build configures all builders with the registry-supplied functions/objects and builds
+// deployers for the given destination: "shoot", "seed", or "garden".
+func (r *Registry) Build(componentType string) error {
+	r.buildComponents = make(map[string]component.DeployWaiter)
+
+	for _, b := range r.components {
+		if r.clientFn != nil {
+			b.Client(r.clientFn)
+		}
+		if r.namespaceFn != nil {
+			b.Namespace(r.namespaceFn)
+		}
+		if r.loggerFn != nil {
+			b.Logger(r.loggerFn)
+		}
+		if r.shoot != nil {
+			b.WithShoot(r.shoot)
+		}
+		if r.seed != nil {
+			b.WithSeed(r.seed)
+		}
+		if r.garden != nil {
+			b.WithGarden(r.garden)
+		}
+		if r.gardenletConfig != nil {
+			b.WithGardenletConfig(r.gardenletConfig)
+		}
+		if dw := b.Build(componentType); dw != nil {
+			r.buildComponents[b.Name()] = dw
+		}
+	}
+	return nil
+}
+
+// SeedClient supplies the seed client lazily to all component builders.
+func (r *Registry) Client(fn func() client.Client) *Registry { r.clientFn = fn; return r }
+
+// Namespace supplies the seed namespace lazily to all component builders.
+func (r *Registry) Namespace(fn func() string) *Registry { r.namespaceFn = fn; return r }
+
+// Logger supplies a logger lazily to all component builders.
+func (r *Registry) Logger(fn func() logr.Logger) *Registry { r.loggerFn = fn; return r }
+
+// WithShoot supplies a Shoot object to all component builders for mapper-based resource derivation.
+func (r *Registry) WithShoot(shoot *gardencorev1beta1.Shoot) *Registry { r.shoot = shoot; return r }
+
+// WithSeed supplies a Seed object to all component builders for mapper-based resource derivation.
+func (r *Registry) WithSeed(seed *gardencorev1beta1.Seed) *Registry { r.seed = seed; return r }
+
+// WithGardenletConfig supplies Gardenlet configuration for seed mappers across all builders.
+func (r *Registry) WithGardenletConfig(cfg *gardenletconfigv1alpha1.GardenletConfiguration) *Registry {
+	r.gardenletConfig = cfg
+	return r
+}
+
+// WithGarden supplies a Garden object to all component builders for mapper-based resource derivation.
+func (r *Registry) WithGarden(garden *operatorv1alpha1.Garden) *Registry { r.garden = garden; return r }
+
+// Component returns the built component by name for the selected destination.
+func (r *Registry) Component(name string) component.DeployWaiter { return r.buildComponents[name] }

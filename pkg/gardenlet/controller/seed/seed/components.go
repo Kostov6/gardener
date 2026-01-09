@@ -67,6 +67,7 @@ import (
 	"github.com/gardener/gardener/pkg/component/observability/opentelemetry/collector"
 	oteloperator "github.com/gardener/gardener/pkg/component/observability/opentelemetry/operator"
 	"github.com/gardener/gardener/pkg/component/observability/plutono"
+	"github.com/gardener/gardener/pkg/component/registry"
 	seedsystem "github.com/gardener/gardener/pkg/component/seed/system"
 	sharedcomponent "github.com/gardener/gardener/pkg/component/shared"
 	"github.com/gardener/gardener/pkg/features"
@@ -115,13 +116,10 @@ type components struct {
 	plutono                       plutono.Interface
 	vali                          component.Deployer
 	kubeStateMetrics              component.DeployWaiter
-	prometheusOperator            component.DeployWaiter
 	cachePrometheus               component.DeployWaiter
 	seedPrometheus                component.DeployWaiter
 	aggregatePrometheus           component.DeployWaiter
 	alertManager                  component.DeployWaiter
-	persesOperator                component.DeployWaiter
-	openTelemetryOperator         component.DeployWaiter
 }
 
 func (r *Reconciler) instantiateComponents(
@@ -220,12 +218,6 @@ func (r *Reconciler) instantiateComponents(
 		return
 	}
 
-	// observability components
-	c.openTelemetryOperator, err = r.newOpenTelemetryOperator()
-	if err != nil {
-		return
-	}
-
 	c.fluentOperator, err = r.newFluentOperator()
 	if err != nil {
 		return
@@ -250,10 +242,16 @@ func (r *Reconciler) instantiateComponents(
 	if err != nil {
 		return
 	}
-	c.prometheusOperator, err = r.newPrometheusOperator()
+
+	r.Registry = registry.NewRegistry()
+
+	err = r.Registry.Client(func() client.Client { return r.SeedClientSet.Client() }).
+		Namespace(func() string { return r.GardenNamespace }).
+		WithGardenletConfig(&r.Config).Build("seed")
 	if err != nil {
-		return
+		return c, fmt.Errorf("failed building component registry for seed: %w", err)
 	}
+
 	c.cachePrometheus, err = r.newCachePrometheus(log, seed, seedIsShoot)
 	if err != nil {
 		return
@@ -267,10 +265,6 @@ func (r *Reconciler) instantiateComponents(
 		return
 	}
 	c.aggregatePrometheus, err = r.newAggregatePrometheus(log, seed, seedIsGarden, secretsManager, globalMonitoringSecretSeed, wildCardCertSecret, alertingSMTPSecret)
-	if err != nil {
-		return
-	}
-	c.persesOperator, err = r.newPersesOperator()
 	if err != nil {
 		return
 	}
@@ -805,22 +799,6 @@ func (r *Reconciler) newKubeStateMetrics() (component.DeployWaiter, error) {
 	)
 }
 
-func (r *Reconciler) newPrometheusOperator() (component.DeployWaiter, error) {
-	return prometheusoperator.NewBuilder().
-		Client(func() client.Client { return r.SeedClientSet.Client() }).
-		Namespace(func() string { return r.GardenNamespace }).
-		Build("seed"), nil
-}
-
-func (r *Reconciler) newPersesOperator() (component.DeployWaiter, error) {
-	return persesoperator.NewBuilder().
-		Client(func() client.Client { return r.SeedClientSet.Client() }).
-		Namespace(func() string { return r.GardenNamespace }).
-		WithGardenletConfig(&r.Config).
-		Build("seed"), nil
-
-}
-
 func (r *Reconciler) newFluentOperator() (component.DeployWaiter, error) {
 	return sharedcomponent.NewFluentOperator(
 		r.SeedClientSet.Client(),
@@ -838,14 +816,6 @@ func (r *Reconciler) newFluentBit() (component.DeployWaiter, error) {
 		gardenlethelper.IsValiEnabled(&r.Config),
 		v1beta1constants.PriorityClassNameSeedSystem600,
 	)
-}
-
-func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) {
-	return oteloperator.NewBuilder().
-		Client(func() client.Client { return r.SeedClientSet.Client() }).
-		Namespace(func() string { return r.GardenNamespace }).
-		WithGardenletConfig(&r.Config).
-		Build("seed"), nil
 }
 
 func (r *Reconciler) newClusterAutoscaler(log logr.Logger, seed *gardencorev1beta1.Seed) component.DeployWaiter {

@@ -198,12 +198,12 @@ func (r *Reconciler) runDeleteSeedFlow(
 		})
 		destroyPrometheusOperator = g.Add(flow.Task{
 			Name:   "Destroy Prometheus Operator",
-			Fn:     component.OpDestroyAndWait(c.prometheusOperator).Destroy,
+			Fn:     component.OpDestroyAndWait(r.Registry.Component("prometheus-operator")).Destroy,
 			SkipIf: seedIsGarden,
 		})
 		destroyOpenTelemetryOperator = g.Add(flow.Task{
 			Name:   "Destroy OpenTelemetry Operator",
-			Fn:     component.OpDestroyAndWait(c.openTelemetryOperator).Destroy,
+			Fn:     component.OpDestroyAndWait(r.Registry.Component("opentelemetry-operator")).Destroy,
 			SkipIf: seedIsGarden,
 		})
 		destroyFluentBit = g.Add(flow.Task{
@@ -231,7 +231,7 @@ func (r *Reconciler) runDeleteSeedFlow(
 		})
 		destroyPersesOperator = g.Add(flow.Task{
 			Name:   "Destroy Perses Operator",
-			Fn:     component.OpDestroyAndWait(c.persesOperator).Destroy,
+			Fn:     component.OpDestroyAndWait(r.Registry.Component("perses-operator")).Destroy,
 			SkipIf: seedIsGarden,
 		})
 		destroyExtensionResources = g.Add(flow.Task{

@@ -54,7 +54,7 @@ func NewBuilder() *component.Builder {
 		return nil
 	}
 
-	return component.NewBuilder().
+	return component.NewBuilder("perses-operator").
 		SeedComponent(func(_ *gardencorev1beta1.Seed, _ *gardenletconfigv1alpha1.GardenletConfiguration) (component.Resources, bool) {
 			return NewResources(v1beta1constants.GardenNamespace, Values{
 				Image:             image.String(),

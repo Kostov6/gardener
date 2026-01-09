@@ -162,9 +162,9 @@ func (s *simpleDeployWater) WaitCleanup(ctx context.Context) error {
 // Builder constructs a simple DeployWaiter using functional parameters.
 // Scope is seed-only for the first iteration.
 type Builder struct {
+	name        string
 	clientFn    func() client.Client
 	namespaceFn func() string
-	resourcesFn func() Resources
 	loggerFn    func() logr.Logger
 	// Optional shoot-aware mapping: if set, Build will derive Resources from the Shoot.
 	shoot          *gardencorev1beta1.Shoot
@@ -178,17 +178,17 @@ type Builder struct {
 	gardenComponent func(*operatorv1alpha1.Garden) (Resources, bool)
 }
 
-// NewBuilder returns a new Builder instance.
-func NewBuilder() *Builder { return &Builder{} }
+// NewBuilder returns a new Builder instance with a descriptive name.
+func NewBuilder(name string) *Builder { return &Builder{name: name} }
+
+// GetName returns the name associated with this builder.
+func (b *Builder) Name() string { return b.name }
 
 // SeedClient supplies the seed client lazily.
 func (b *Builder) Client(fn func() client.Client) *Builder { b.clientFn = fn; return b }
 
 // Namespace supplies the seed namespace lazily.
 func (b *Builder) Namespace(fn func() string) *Builder { b.namespaceFn = fn; return b }
-
-// WithResources supplies the Resources producer.
-func (b *Builder) WithResources(fn func() Resources) *Builder { b.resourcesFn = fn; return b }
 
 // Logger supplies a logger lazily for simpleDeployWater to emit logs.
 func (b *Builder) Logger(fn func() logr.Logger) *Builder { b.loggerFn = fn; return b }
@@ -246,46 +246,30 @@ func (b *Builder) Build(componentType string) DeployWaiter {
 	}
 	// Prefer explicit WithResources; otherwise select by declared componentType when provided.
 	mappedEnabled := true
-	if b.resourcesFn != nil {
-		rs = b.resourcesFn()
-	} else {
-		switch componentType {
-		case "shoot":
-			if b.shootComponent != nil {
-				var enabled bool
-				rs, enabled = b.shootComponent(b.shoot)
-				mappedEnabled = enabled
-			}
-		case "seed":
-			if b.seedComponent != nil {
-				var enabled bool
-				rs, enabled = b.seedComponent(b.seed, b.gardenletConfig)
-				mappedEnabled = enabled
-			}
-		case "garden":
-			if b.gardenComponent != nil {
-				var enabled bool
-				rs, enabled = b.gardenComponent(b.garden)
-				mappedEnabled = enabled
-			}
+
+	switch componentType {
+	case "shoot":
+		if b.shootComponent != nil {
+			var enabled bool
+			rs, enabled = b.shootComponent(b.shoot)
+			mappedEnabled = enabled
 		}
-		// Fallback to previous precedence if componentType was empty or no mapper was configured.
-		if rs == nil {
-			if b.shootComponent != nil {
-				var enabled bool
-				rs, enabled = b.shootComponent(b.shoot)
-				mappedEnabled = enabled
-			} else if b.seedComponent != nil {
-				var enabled bool
-				rs, enabled = b.seedComponent(b.seed, b.gardenletConfig)
-				mappedEnabled = enabled
-			} else if b.gardenComponent != nil {
-				var enabled bool
-				rs, enabled = b.gardenComponent(b.garden)
-				mappedEnabled = enabled
-			}
+	case "seed":
+		if b.seedComponent != nil {
+			var enabled bool
+			rs, enabled = b.seedComponent(b.seed, b.gardenletConfig)
+			mappedEnabled = enabled
 		}
+	case "garden":
+		if b.gardenComponent != nil {
+			var enabled bool
+			rs, enabled = b.gardenComponent(b.garden)
+			mappedEnabled = enabled
+		}
+	default:
+		return nil
 	}
+
 	if b.loggerFn != nil {
 		lg = b.loggerFn()
 	}

@@ -422,7 +422,7 @@ func (r *Reconciler) runReconcileSeedFlow(
 		})
 		_ = g.Add(flow.Task{
 			Name:         "Deploying OpenTelemetry Operator",
-			Fn:           c.openTelemetryOperator.Deploy,
+			Fn:           r.Registry.Component("opentelemetry-operator").Deploy,
 			Dependencies: flow.NewTaskIDs(syncPointReadyForSystemComponents),
 			SkipIf:       seedIsGarden,
 		})
@@ -457,7 +457,7 @@ func (r *Reconciler) runReconcileSeedFlow(
 		})
 		_ = g.Add(flow.Task{
 			Name:         "Deploying Prometheus Operator",
-			Fn:           c.prometheusOperator.Deploy,
+			Fn:           r.Registry.Component("prometheus-operator").Deploy,
 			Dependencies: flow.NewTaskIDs(syncPointReadyForSystemComponents),
 			SkipIf:       seedIsGarden,
 		})
@@ -483,7 +483,7 @@ func (r *Reconciler) runReconcileSeedFlow(
 		})
 		_ = g.Add(flow.Task{
 			Name:         "Deploying Perses Operator",
-			Fn:           c.persesOperator.Deploy,
+			Fn:           r.Registry.Component("perses-operator").Deploy,
 			Dependencies: flow.NewTaskIDs(syncPointReadyForSystemComponents),
 			SkipIf:       seedIsGarden,
 		})

@@ -24,6 +24,7 @@ import (
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
+	"github.com/gardener/gardener/pkg/component/registry"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 	seedpkg "github.com/gardener/gardener/pkg/gardenlet/operation/seed"
 	"github.com/gardener/gardener/pkg/utils/flow"
@@ -34,6 +35,7 @@ import (
 
 // Reconciler reconciles Seed resources and provisions or de-provisions the seed system components.
 type Reconciler struct {
+	Registry                             *registry.Registry
 	GardenClient                         client.Client
 	SeedClientSet                        kubernetes.Interface
 	SeedVersion                          *semver.Version
