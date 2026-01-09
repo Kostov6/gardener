@@ -10,7 +10,6 @@ import (
 	"github.com/gardener/gardener/pkg/component/observability/opentelemetry/operator"
 	"github.com/gardener/gardener/pkg/component/shoot/namespaces"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
-	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -18,9 +17,8 @@ type Registry struct {
 	components []*component.Builder
 
 	// Common configuration functions/objects applied to all builders
-	clientFn        func() client.Client
-	namespaceFn     func() string
-	loggerFn        func() logr.Logger
+	client          client.Client
+	namespace       string
 	shoot           *gardencorev1beta1.Shoot
 	seed            *gardencorev1beta1.Seed
 	garden          *operatorv1alpha1.Garden
@@ -48,15 +46,9 @@ func (r *Registry) Build(componentType string) error {
 	r.buildComponents = make(map[string]component.DeployWaiter)
 
 	for _, b := range r.components {
-		if r.clientFn != nil {
-			b.Client(r.clientFn)
-		}
-		if r.namespaceFn != nil {
-			b.Namespace(r.namespaceFn)
-		}
-		if r.loggerFn != nil {
-			b.Logger(r.loggerFn)
-		}
+		b.Client(r.client)
+		b.Namespace(r.namespace)
+
 		if r.shoot != nil {
 			b.WithShoot(r.shoot)
 		}
@@ -77,13 +69,10 @@ func (r *Registry) Build(componentType string) error {
 }
 
 // SeedClient supplies the seed client lazily to all component builders.
-func (r *Registry) Client(fn func() client.Client) *Registry { r.clientFn = fn; return r }
+func (r *Registry) Client(c client.Client) *Registry { r.client = c; return r }
 
 // Namespace supplies the seed namespace lazily to all component builders.
-func (r *Registry) Namespace(fn func() string) *Registry { r.namespaceFn = fn; return r }
-
-// Logger supplies a logger lazily to all component builders.
-func (r *Registry) Logger(fn func() logr.Logger) *Registry { r.loggerFn = fn; return r }
+func (r *Registry) Namespace(ns string) *Registry { r.namespace = ns; return r }
 
 // WithShoot supplies a Shoot object to all component builders for mapper-based resource derivation.
 func (r *Registry) WithShoot(shoot *gardencorev1beta1.Shoot) *Registry { r.shoot = shoot; return r }

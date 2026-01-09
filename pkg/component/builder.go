@@ -13,7 +13,6 @@ import (
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 	"github.com/gardener/gardener/pkg/utils/managedresources"
-	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -43,22 +42,15 @@ type simpleDeployWater struct {
 	client    client.Client
 	namespace string
 	resources Resources
-	log       logr.Logger
 }
 
 // Deploy renders resources and creates/updates seed ManagedResources for each bundle.
 func (s *simpleDeployWater) Deploy(ctx context.Context) error {
-	if s.log.GetSink() != nil {
-		s.log.Info("Deploying bundles via ManagedResources")
-	}
 	bundles, err := s.resources.All(ctx)
 	if err != nil {
 		return err
 	}
 	for _, b := range bundles {
-		if s.log.GetSink() != nil {
-			s.log.Info("Applying ManagedResource bundle", "name", b.Name)
-		}
 		registry := managedresources.NewRegistry(kubernetes.SeedScheme, kubernetes.SeedCodec, kubernetes.SeedSerializer)
 		data, err := registry.AddAllAndSerialize(b.Objects...)
 		if err != nil {
@@ -91,17 +83,11 @@ func (s *simpleDeployWater) Deploy(ctx context.Context) error {
 
 // Destroy deletes the seed ManagedResources created during Deploy.
 func (s *simpleDeployWater) Destroy(ctx context.Context) error {
-	if s.log.GetSink() != nil {
-		s.log.Info("Destroying ManagedResources for bundles")
-	}
 	bundles, err := s.resources.All(ctx)
 	if err != nil {
 		return err
 	}
 	for _, b := range bundles {
-		if s.log.GetSink() != nil {
-			s.log.Info("Deleting ManagedResource bundle", "name", b.Name)
-		}
 		if b.Destination == "shoot" {
 			if err := managedresources.DeleteForShoot(ctx, s.client, s.namespace, b.Name); err != nil {
 				return err
@@ -117,9 +103,6 @@ func (s *simpleDeployWater) Destroy(ctx context.Context) error {
 
 // Wait waits until all ManagedResources are healthy with a conservative default timeout.
 func (s *simpleDeployWater) Wait(ctx context.Context) error {
-	if s.log.GetSink() != nil {
-		s.log.Info("Waiting for ManagedResources to become healthy")
-	}
 	bundles, err := s.resources.All(ctx)
 	if err != nil {
 		return err
@@ -127,9 +110,6 @@ func (s *simpleDeployWater) Wait(ctx context.Context) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	for _, b := range bundles {
-		if s.log.GetSink() != nil {
-			s.log.Info("Waiting for health", "name", b.Name)
-		}
 		if err := managedresources.WaitUntilHealthy(timeoutCtx, s.client, s.namespace, b.Name); err != nil {
 			return err
 		}
@@ -139,9 +119,6 @@ func (s *simpleDeployWater) Wait(ctx context.Context) error {
 
 // WaitCleanup waits until all ManagedResources are deleted with a conservative default timeout.
 func (s *simpleDeployWater) WaitCleanup(ctx context.Context) error {
-	if s.log.GetSink() != nil {
-		s.log.Info("Waiting for ManagedResources to be deleted")
-	}
 	bundles, err := s.resources.All(ctx)
 	if err != nil {
 		return err
@@ -149,9 +126,6 @@ func (s *simpleDeployWater) WaitCleanup(ctx context.Context) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	for _, b := range bundles {
-		if s.log.GetSink() != nil {
-			s.log.Info("Waiting for deletion", "name", b.Name)
-		}
 		if err := managedresources.WaitUntilDeleted(timeoutCtx, s.client, s.namespace, b.Name); err != nil {
 			return err
 		}
@@ -162,10 +136,9 @@ func (s *simpleDeployWater) WaitCleanup(ctx context.Context) error {
 // Builder constructs a simple DeployWaiter using functional parameters.
 // Scope is seed-only for the first iteration.
 type Builder struct {
-	name        string
-	clientFn    func() client.Client
-	namespaceFn func() string
-	loggerFn    func() logr.Logger
+	name      string
+	client    client.Client
+	namespace string
 	// Optional shoot-aware mapping: if set, Build will derive Resources from the Shoot.
 	shoot          *gardencorev1beta1.Shoot
 	shootComponent func(*gardencorev1beta1.Shoot) (Resources, bool)
@@ -185,13 +158,10 @@ func NewBuilder(name string) *Builder { return &Builder{name: name} }
 func (b *Builder) Name() string { return b.name }
 
 // SeedClient supplies the seed client lazily.
-func (b *Builder) Client(fn func() client.Client) *Builder { b.clientFn = fn; return b }
+func (b *Builder) Client(c client.Client) *Builder { b.client = c; return b }
 
 // Namespace supplies the seed namespace lazily.
-func (b *Builder) Namespace(fn func() string) *Builder { b.namespaceFn = fn; return b }
-
-// Logger supplies a logger lazily for simpleDeployWater to emit logs.
-func (b *Builder) Logger(fn func() logr.Logger) *Builder { b.loggerFn = fn; return b }
+func (b *Builder) Namespace(ns string) *Builder { b.namespace = ns; return b }
 
 // Note: enable/disable is controlled by mapper functions returning the boolean flag.
 
@@ -233,55 +203,35 @@ func (b *Builder) GardenComponent(fn func(*operatorv1alpha1.Garden) (Resources, 
 // Build creates the DeployWaiter.
 func (b *Builder) Build(componentType string) DeployWaiter {
 	var (
-		c  client.Client
-		ns string
-		rs Resources
-		lg logr.Logger
+		rs      Resources
+		enabled bool
 	)
-	if b.clientFn != nil {
-		c = b.clientFn()
-	}
-	if b.namespaceFn != nil {
-		ns = b.namespaceFn()
-	}
-	// Prefer explicit WithResources; otherwise select by declared componentType when provided.
-	mappedEnabled := true
 
 	switch componentType {
 	case "shoot":
 		if b.shootComponent != nil {
-			var enabled bool
 			rs, enabled = b.shootComponent(b.shoot)
-			mappedEnabled = enabled
 		}
 	case "seed":
 		if b.seedComponent != nil {
-			var enabled bool
 			rs, enabled = b.seedComponent(b.seed, b.gardenletConfig)
-			mappedEnabled = enabled
 		}
 	case "garden":
 		if b.gardenComponent != nil {
-			var enabled bool
 			rs, enabled = b.gardenComponent(b.garden)
-			mappedEnabled = enabled
 		}
 	default:
 		return nil
 	}
 
-	if b.loggerFn != nil {
-		lg = b.loggerFn()
-	}
 	dw := &simpleDeployWater{
-		client:    c,
-		namespace: ns,
+		client:    b.client,
+		namespace: b.namespace,
 		resources: rs,
-		log:       lg,
 	}
 
 	var deployer DeployWaiter = dw
-	if !mappedEnabled {
+	if !enabled {
 		deployer = OpDestroyAndWait(deployer)
 	}
 

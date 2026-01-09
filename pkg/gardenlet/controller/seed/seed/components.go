@@ -205,7 +205,7 @@ func (r *Reconciler) instantiateComponents(
 	if err != nil {
 		return
 	}
-	c.clusterAutoscaler = r.newClusterAutoscaler(log, seed.GetInfo())
+	c.clusterAutoscaler = r.newClusterAutoscaler(seed.GetInfo())
 	c.dwdWeeder, c.dwdProber, err = r.newDependencyWatchdogs(seed.GetInfo().Spec.Settings)
 	if err != nil {
 		return
@@ -245,8 +245,8 @@ func (r *Reconciler) instantiateComponents(
 
 	r.Registry = registry.NewRegistry()
 
-	err = r.Registry.Client(func() client.Client { return r.SeedClientSet.Client() }).
-		Namespace(func() string { return r.GardenNamespace }).
+	err = r.Registry.Client(r.SeedClientSet.Client()).
+		Namespace(r.GardenNamespace).
 		WithGardenletConfig(&r.Config).Build("seed")
 	if err != nil {
 		return c, fmt.Errorf("failed building component registry for seed: %w", err)
@@ -818,12 +818,11 @@ func (r *Reconciler) newFluentBit() (component.DeployWaiter, error) {
 	)
 }
 
-func (r *Reconciler) newClusterAutoscaler(log logr.Logger, seed *gardencorev1beta1.Seed) component.DeployWaiter {
+func (r *Reconciler) newClusterAutoscaler(seed *gardencorev1beta1.Seed) component.DeployWaiter {
 	return clusterautoscaler.NewBuilder().
-		Client(func() client.Client { return r.SeedClientSet.Client() }).
-		Namespace(func() string { return r.GardenNamespace }).
+		Client(r.SeedClientSet.Client()).
+		Namespace(r.GardenNamespace).
 		WithSeed(seed).
-		Logger(func() logr.Logger { return log.WithValues("component-alt", "CA-bootstrapper") }).
 		Build("seed")
 }
 
