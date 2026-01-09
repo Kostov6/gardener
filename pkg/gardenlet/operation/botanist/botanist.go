@@ -22,6 +22,7 @@ import (
 	v1beta1helper "github.com/gardener/gardener/pkg/apis/core/v1beta1/helper"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/gardener/gardener/pkg/component/etcd/etcd"
+	"github.com/gardener/gardener/pkg/component/registry"
 	"github.com/gardener/gardener/pkg/gardenlet/operation"
 	gardenerutils "github.com/gardener/gardener/pkg/utils/gardener"
 	secretsmanager "github.com/gardener/gardener/pkg/utils/secrets/manager"
@@ -166,6 +167,12 @@ func New(ctx context.Context, o *operation.Operation) (*Botanist, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	o.Shoot.Components.Registry = registry.NewRegistry().
+		Client(b.SeedClientSet.Client()).
+		Namespace(b.Shoot.ControlPlaneNamespace).
+		WithShoot(b.Shoot.GetInfo()).
+		Build("shoot")
 
 	// system components
 	o.Shoot.Components.SystemComponents.Resources = b.DefaultShootSystem()

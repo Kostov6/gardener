@@ -67,6 +67,7 @@ import (
 	"github.com/gardener/gardener/pkg/component/observability/opentelemetry/collector"
 	oteloperator "github.com/gardener/gardener/pkg/component/observability/opentelemetry/operator"
 	"github.com/gardener/gardener/pkg/component/observability/plutono"
+	"github.com/gardener/gardener/pkg/component/registry"
 	seedsystem "github.com/gardener/gardener/pkg/component/seed/system"
 	sharedcomponent "github.com/gardener/gardener/pkg/component/shared"
 	"github.com/gardener/gardener/pkg/features"
@@ -258,6 +259,14 @@ func (r *Reconciler) instantiateComponents(
 	if err != nil {
 		return
 	}
+
+	r.Registry = registry.NewRegistry().
+		Client(r.SeedClientSet.Client()).
+		Namespace(r.GardenNamespace).
+		WithSeed(seed.GetInfo()).
+		WithGardenletConfig(&r.Config).
+		Build("seed")
+
 	c.alertManager, err = r.newAlertmanager(log, seed, alertingSMTPSecret)
 	if err != nil {
 		return

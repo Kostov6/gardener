@@ -46,6 +46,7 @@ import (
 	"github.com/gardener/gardener/pkg/component/observability/monitoring/prometheus"
 	"github.com/gardener/gardener/pkg/component/observability/opentelemetry/collector"
 	"github.com/gardener/gardener/pkg/component/observability/plutono"
+	"github.com/gardener/gardener/pkg/component/registry"
 	shootsystem "github.com/gardener/gardener/pkg/component/shoot/system"
 	gardenerutils "github.com/gardener/gardener/pkg/utils/gardener"
 )
@@ -111,6 +112,7 @@ type Shoot struct {
 
 // Components contains different components deployed in the Shoot cluster.
 type Components struct {
+	Registry                 *registry.Registry
 	BackupEntry              backupentry.Interface
 	SourceBackupEntry        backupentry.Interface
 	ControlPlane             *ControlPlane

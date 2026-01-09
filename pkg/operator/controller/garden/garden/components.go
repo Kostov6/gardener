@@ -77,6 +77,7 @@ import (
 	"github.com/gardener/gardener/pkg/component/observability/monitoring/prometheusoperator"
 	oteloperator "github.com/gardener/gardener/pkg/component/observability/opentelemetry/operator"
 	"github.com/gardener/gardener/pkg/component/observability/plutono"
+	"github.com/gardener/gardener/pkg/component/registry"
 	sharedcomponent "github.com/gardener/gardener/pkg/component/shared"
 	controllermanagerconfigv1alpha1 "github.com/gardener/gardener/pkg/controllermanager/apis/config/v1alpha1"
 	"github.com/gardener/gardener/pkg/features"
@@ -91,6 +92,7 @@ import (
 )
 
 type components struct {
+	registry         *registry.Registry
 	etcdCRD          component.DeployWaiter
 	vpaCRD           component.DeployWaiter
 	istioCRD         component.DeployWaiter
@@ -315,6 +317,12 @@ func (r *Reconciler) instantiateComponents(
 	if err != nil {
 		return
 	}
+
+	c.registry = registry.NewRegistry().
+		Client(r.RuntimeClientSet.Client()).
+		Namespace(r.GardenNamespace).
+		Build("garden")
+
 	c.plutono, err = r.newPlutono(garden, secretsManager, primaryIngressDomain.Name, wildcardCertSecretName)
 	if err != nil {
 		return
