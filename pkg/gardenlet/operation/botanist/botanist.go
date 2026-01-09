@@ -176,7 +176,6 @@ func New(ctx context.Context, o *operation.Operation) (*Botanist, error) {
 
 	// system components
 	o.Shoot.Components.SystemComponents.Resources = b.DefaultShootSystem()
-	o.Shoot.Components.SystemComponents.Namespaces = b.DefaultShootNamespaces()
 	o.Shoot.Components.SystemComponents.ClusterIdentity = b.DefaultClusterIdentity()
 
 	if !o.Shoot.IsWorkerless {

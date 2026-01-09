@@ -170,7 +170,6 @@ type SystemComponents struct {
 	CoreDNS             coredns.Interface
 	KubeProxy           kubeproxy.Interface
 	MetricsServer       component.DeployWaiter
-	Namespaces          component.DeployWaiter
 	NodeLocalDNS        nodelocaldns.Interface
 	NodeProblemDetector component.DeployWaiter
 	NodeExporter        component.DeployWaiter

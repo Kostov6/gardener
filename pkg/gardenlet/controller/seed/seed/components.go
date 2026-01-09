@@ -102,7 +102,6 @@ type components struct {
 	nginxIngressController  component.DeployWaiter
 	verticalPodAutoscaler   component.DeployWaiter
 	etcdDruid               component.DeployWaiter
-	clusterAutoscaler       component.DeployWaiter
 	dwdWeeder               component.DeployWaiter
 	dwdProber               component.DeployWaiter
 
@@ -116,13 +115,10 @@ type components struct {
 	plutono                       plutono.Interface
 	vali                          component.Deployer
 	kubeStateMetrics              component.DeployWaiter
-	prometheusOperator            component.DeployWaiter
 	cachePrometheus               component.DeployWaiter
 	seedPrometheus                component.DeployWaiter
 	aggregatePrometheus           component.DeployWaiter
 	alertManager                  component.DeployWaiter
-	persesOperator                component.DeployWaiter
-	openTelemetryOperator         component.DeployWaiter
 }
 
 func (r *Reconciler) instantiateComponents(
@@ -208,7 +204,6 @@ func (r *Reconciler) instantiateComponents(
 	if err != nil {
 		return
 	}
-	c.clusterAutoscaler = r.newClusterAutoscaler()
 	c.dwdWeeder, c.dwdProber, err = r.newDependencyWatchdogs(seed.GetInfo().Spec.Settings)
 	if err != nil {
 		return
@@ -217,12 +212,6 @@ func (r *Reconciler) instantiateComponents(
 	c.kubeAPIServerService = r.newKubeAPIServerService(wildCardCertSecret)
 	c.kubeAPIServerIngress = r.newKubeAPIServerIngress(seed, wildCardCertSecret, c.istioDefaultLabels, c.istioDefaultNamespace)
 	c.ingressDNSRecord, err = r.newIngressDNSRecord(ctx, log, seed, "")
-	if err != nil {
-		return
-	}
-
-	// observability components
-	c.openTelemetryOperator, err = r.newOpenTelemetryOperator()
 	if err != nil {
 		return
 	}
@@ -251,10 +240,6 @@ func (r *Reconciler) instantiateComponents(
 	if err != nil {
 		return
 	}
-	c.prometheusOperator, err = r.newPrometheusOperator()
-	if err != nil {
-		return
-	}
 	c.cachePrometheus, err = r.newCachePrometheus(log, seed, seedIsShoot)
 	if err != nil {
 		return
@@ -276,10 +261,6 @@ func (r *Reconciler) instantiateComponents(
 		return
 	}
 	c.aggregatePrometheus, err = r.newAggregatePrometheus(log, seed, seedIsGarden, secretsManager, globalMonitoringSecretSeed, wildCardCertSecret, alertingSMTPSecret)
-	if err != nil {
-		return
-	}
-	c.persesOperator, err = r.newPersesOperator()
 	if err != nil {
 		return
 	}
@@ -814,22 +795,6 @@ func (r *Reconciler) newKubeStateMetrics() (component.DeployWaiter, error) {
 	)
 }
 
-func (r *Reconciler) newPrometheusOperator() (component.DeployWaiter, error) {
-	return sharedcomponent.NewPrometheusOperator(
-		r.SeedClientSet.Client(),
-		r.GardenNamespace,
-		v1beta1constants.PriorityClassNameSeedSystem600,
-	)
-}
-
-func (r *Reconciler) newPersesOperator() (component.DeployWaiter, error) {
-	return sharedcomponent.NewPersesOperator(
-		r.SeedClientSet.Client(),
-		r.GardenNamespace,
-		v1beta1constants.PriorityClassNameSeedSystem600,
-	)
-}
-
 func (r *Reconciler) newFluentOperator() (component.DeployWaiter, error) {
 	return sharedcomponent.NewFluentOperator(
 		r.SeedClientSet.Client(),
@@ -847,19 +812,6 @@ func (r *Reconciler) newFluentBit() (component.DeployWaiter, error) {
 		gardenlethelper.IsValiEnabled(&r.Config),
 		v1beta1constants.PriorityClassNameSeedSystem600,
 	)
-}
-
-func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) {
-	return sharedcomponent.NewOpenTelemetryOperator(
-		r.SeedClientSet.Client(),
-		r.GardenNamespace,
-		gardenlethelper.IsLoggingEnabled(&r.Config),
-		v1beta1constants.PriorityClassNameSeedSystem600,
-	)
-}
-
-func (r *Reconciler) newClusterAutoscaler() component.DeployWaiter {
-	return clusterautoscaler.NewBootstrapper(r.SeedClientSet.Client(), r.GardenNamespace)
 }
 
 func (r *Reconciler) newClusterIdentity(seed *gardencorev1beta1.Seed) component.DeployWaiter {
