@@ -572,7 +572,7 @@ func (r *Reconciler) reconcile(
 		})
 		_ = g.Add(flow.Task{
 			Name: "Deploying prometheus-operator",
-			Fn:   c.prometheusOperator.Deploy,
+			Fn:   c.registry.Component("prometheus-operator").Deploy,
 		})
 		_ = g.Add(flow.Task{
 			Name: "Deploying OpenTelemetry Operator",

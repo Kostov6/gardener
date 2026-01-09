@@ -457,7 +457,7 @@ func (r *Reconciler) runReconcileSeedFlow(
 		})
 		_ = g.Add(flow.Task{
 			Name:         "Deploying Prometheus Operator",
-			Fn:           c.prometheusOperator.Deploy,
+			Fn:           r.Registry.Component("prometheus-operator").Deploy,
 			Dependencies: flow.NewTaskIDs(syncPointReadyForSystemComponents),
 			SkipIf:       seedIsGarden,
 		})

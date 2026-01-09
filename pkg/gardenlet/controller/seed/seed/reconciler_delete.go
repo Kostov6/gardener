@@ -198,7 +198,7 @@ func (r *Reconciler) runDeleteSeedFlow(
 		})
 		destroyPrometheusOperator = g.Add(flow.Task{
 			Name:   "Destroy Prometheus Operator",
-			Fn:     component.OpDestroyAndWait(c.prometheusOperator).Destroy,
+			Fn:     component.OpDestroyAndWait(r.Registry.Component("prometheus-operator")).Destroy,
 			SkipIf: seedIsGarden,
 		})
 		destroyOpenTelemetryOperator = g.Add(flow.Task{
