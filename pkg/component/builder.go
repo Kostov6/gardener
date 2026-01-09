@@ -30,6 +30,8 @@ type Bundle struct {
 	Name    string
 	Objects []client.Object
 	Labels  map[string]string
+	// Destination controls where the ManagedResource is created: "seed" or "shoot".
+	Destination string
 }
 
 // simpleDeployWater is a simple DeployWaiter implementation that applies Bundles
@@ -62,13 +64,25 @@ func (s *simpleDeployWater) Deploy(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if len(b.Labels) > 0 {
-			if err := managedresources.CreateForSeedWithLabels(ctx, s.client, s.namespace, b.Name, false, b.Labels, data); err != nil {
-				return err
+		if b.Destination == "shoot" {
+			if len(b.Labels) > 0 {
+				if err := managedresources.CreateForShootWithLabels(ctx, s.client, s.namespace, b.Name, managedresources.LabelValueGardener, false, b.Labels, data); err != nil {
+					return err
+				}
+			} else {
+				if err := managedresources.CreateForShoot(ctx, s.client, s.namespace, b.Name, managedresources.LabelValueGardener, false, data); err != nil {
+					return err
+				}
 			}
 		} else {
-			if err := managedresources.CreateForSeed(ctx, s.client, s.namespace, b.Name, false, data); err != nil {
-				return err
+			if len(b.Labels) > 0 {
+				if err := managedresources.CreateForSeedWithLabels(ctx, s.client, s.namespace, b.Name, false, b.Labels, data); err != nil {
+					return err
+				}
+			} else {
+				if err := managedresources.CreateForSeed(ctx, s.client, s.namespace, b.Name, false, data); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -88,8 +102,14 @@ func (s *simpleDeployWater) Destroy(ctx context.Context) error {
 		if s.log.GetSink() != nil {
 			s.log.Info("Deleting ManagedResource bundle", "name", b.Name)
 		}
-		if err := managedresources.DeleteForSeed(ctx, s.client, s.namespace, b.Name); err != nil {
-			return err
+		if b.Destination == "shoot" {
+			if err := managedresources.DeleteForShoot(ctx, s.client, s.namespace, b.Name); err != nil {
+				return err
+			}
+		} else {
+			if err := managedresources.DeleteForSeed(ctx, s.client, s.namespace, b.Name); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

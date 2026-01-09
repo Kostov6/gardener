@@ -56,8 +56,9 @@ func (r *resources) All(ctx context.Context) ([]component.Bundle, error) { //nol
 	}
 
 	return []component.Bundle{{
-		Name:    managedResourceName,
-		Objects: []client.Object{kubeSystemNamespace},
+		Name:        managedResourceName,
+		Objects:     []client.Object{kubeSystemNamespace},
+		Destination: "shoot",
 	}}, nil
 }
 
