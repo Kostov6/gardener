@@ -315,12 +315,12 @@ func (r *Reconciler) delete(
 		})
 		destroyPrometheusOperator = g.Add(flow.Task{
 			Name:         "Destroying prometheus-operator",
-			Fn:           component.OpDestroyAndWait(c.prometheusOperator).Destroy,
+			Fn:           component.OpDestroyAndWait(c.registry.Component("prometheus-operator")).Destroy,
 			Dependencies: flow.NewTaskIDs(destroyAlertmanager, destroyPrometheusGarden, destroyPrometheusLongTerm),
 		})
 		destroyOpenTelemetryOperator = g.Add(flow.Task{
 			Name:         "Destroying OpenTelemetry Operator",
-			Fn:           component.OpDestroyAndWait(c.openTelemetryOperator).Destroy,
+			Fn:           component.OpDestroyAndWait(c.registry.Component("opentelemetry-operator")).Destroy,
 			Dependencies: flow.NewTaskIDs(syncPointVirtualGardenControlPlaneDestroyed),
 		})
 		destroyFluentOperatorCustomResources = g.Add(flow.Task{
@@ -345,7 +345,7 @@ func (r *Reconciler) delete(
 		})
 		destroyPersesOperator = g.Add(flow.Task{
 			Name: "Destroying perses-operator",
-			Fn:   component.OpDestroyAndWait(c.persesOperator).Destroy,
+			Fn:   component.OpDestroyAndWait(c.registry.Component("perses-operator")).Destroy,
 		})
 		syncPointCleanedUp = flow.NewTaskIDs(
 			waitUntilExtensionResourcesDeleted,

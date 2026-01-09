@@ -77,6 +77,7 @@ import (
 	"github.com/gardener/gardener/pkg/component/observability/monitoring/prometheusoperator"
 	oteloperator "github.com/gardener/gardener/pkg/component/observability/opentelemetry/operator"
 	"github.com/gardener/gardener/pkg/component/observability/plutono"
+	"github.com/gardener/gardener/pkg/component/registry"
 	sharedcomponent "github.com/gardener/gardener/pkg/component/shared"
 	controllermanagerconfigv1alpha1 "github.com/gardener/gardener/pkg/controllermanager/apis/config/v1alpha1"
 	"github.com/gardener/gardener/pkg/features"
@@ -91,6 +92,8 @@ import (
 )
 
 type components struct {
+	registry *registry.Registry
+
 	etcdCRD          component.DeployWaiter
 	vpaCRD           component.DeployWaiter
 	istioCRD         component.DeployWaiter
@@ -136,13 +139,10 @@ type components struct {
 	fluentOperatorCustomResources component.DeployWaiter
 	plutono                       plutono.Interface
 	vali                          component.Deployer
-	prometheusOperator            component.DeployWaiter
-	openTelemetryOperator         component.DeployWaiter
 	alertManager                  alertmanager.Interface
 	prometheusGarden              prometheus.Interface
 	prometheusLongTerm            prometheus.Interface
 	blackboxExporter              component.DeployWaiter
-	persesOperator                component.DeployWaiter
 }
 
 func (r *Reconciler) instantiateComponents(
@@ -319,14 +319,12 @@ func (r *Reconciler) instantiateComponents(
 	if err != nil {
 		return
 	}
-	c.prometheusOperator, err = r.newPrometheusOperator()
-	if err != nil {
-		return
-	}
-	c.openTelemetryOperator, err = r.newOpenTelemetryOperator()
-	if err != nil {
-		return
-	}
+
+	c.registry = registry.NewRegistry().
+		Client(r.RuntimeClientSet.Client()).
+		Namespace(r.GardenNamespace).
+		Build("garden")
+
 	c.alertManager, err = r.newAlertmanager(log, garden, secretsManager, primaryIngressDomain.Name, wildcardCertSecretName)
 	if err != nil {
 		return
@@ -340,10 +338,6 @@ func (r *Reconciler) instantiateComponents(
 		return
 	}
 	c.blackboxExporter, err = r.newBlackboxExporter(garden, secretsManager, wildcardCertSecretName)
-	if err != nil {
-		return
-	}
-	c.persesOperator, err = r.newPersesOperator()
 	if err != nil {
 		return
 	}
@@ -1374,13 +1368,6 @@ func (r *Reconciler) newVali() (component.Deployer, error) {
 	)
 }
 
-func (r *Reconciler) newPrometheusOperator() (component.DeployWaiter, error) {
-	return prometheusoperator.NewBuilder().
-		Client(r.RuntimeClientSet.Client()).
-		Namespace(r.GardenNamespace).
-		Build("garden"), nil
-}
-
 func (r *Reconciler) newAlertmanager(log logr.Logger, garden *operatorv1alpha1.Garden, secretsManager secretsmanager.Interface, ingressDomain string, wildcardCertSecretName *string) (alertmanager.Interface, error) {
 	return sharedcomponent.NewAlertmanager(log, r.RuntimeClientSet.Client(), r.GardenNamespace, alertmanager.Values{
 		Name:              "garden",
@@ -1509,13 +1496,6 @@ func (r *Reconciler) newBlackboxExporter(garden *operatorv1alpha1.Garden, secret
 	)
 }
 
-func (r *Reconciler) newPersesOperator() (component.DeployWaiter, error) {
-	return persesoperator.NewBuilder().
-		Client(r.RuntimeClientSet.Client()).
-		Namespace(r.GardenNamespace).
-		Build("garden"), nil
-}
-
 func (r *Reconciler) newGardenerDiscoveryServer(
 	secretsManager secretsmanager.Interface,
 	domain string,
@@ -1538,13 +1518,6 @@ func (r *Reconciler) newGardenerDiscoveryServer(
 			WorkloadIdentityTokenIssuer: workloadIdentityTokenIssuer,
 		},
 	), nil
-}
-
-func (r *Reconciler) newOpenTelemetryOperator() (component.DeployWaiter, error) {
-	return oteloperator.NewBuilder().
-		Client(r.RuntimeClientSet.Client()).
-		Namespace(r.GardenNamespace).
-		Build("garden"), nil
 }
 
 func domainNames(domains []operatorv1alpha1.DNSDomain) []string {

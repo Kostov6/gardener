@@ -572,11 +572,11 @@ func (r *Reconciler) reconcile(
 		})
 		_ = g.Add(flow.Task{
 			Name: "Deploying prometheus-operator",
-			Fn:   c.prometheusOperator.Deploy,
+			Fn:   c.registry.Component("prometheus-operator").Deploy,
 		})
 		_ = g.Add(flow.Task{
 			Name: "Deploying OpenTelemetry Operator",
-			Fn:   c.openTelemetryOperator.Deploy,
+			Fn:   c.registry.Component("opentelemetry-operator").Deploy,
 		})
 		_ = g.Add(flow.Task{
 			Name: "Deploying Alertmanager",
@@ -633,7 +633,7 @@ func (r *Reconciler) reconcile(
 		})
 		_ = g.Add(flow.Task{
 			Name: "Deploying perses-operator",
-			Fn:   c.persesOperator.Deploy,
+			Fn:   c.registry.Component("perses-operator").Deploy,
 		})
 	)
 
