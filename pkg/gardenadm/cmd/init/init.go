@@ -6,12 +6,17 @@ package init
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	v1beta1helper "github.com/gardener/gardener/pkg/apis/core/v1beta1/helper"
@@ -465,10 +470,27 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 		clientSet kubernetes.Interface
 		g         = flow.NewGraph("bootstrap")
 
+		// Simple test: if --secret-file is provided, load it as a List and print only the count of managed secrets.
+		test = g.Add(flow.Task{
+			Name: "Loading user-provided secrets (count only)",
+			Fn: func(ctx context.Context) error {
+				if opts.SecretFile == "" {
+					return nil
+				}
+				secrets, err := LoadSecretsFromListFile(opts.SecretFile)
+				if err != nil {
+					return fmt.Errorf("failed loading secrets from %s: %w", opts.SecretFile, err)
+				}
+				b.Logger.Info("Managed secrets found", "count", len(secrets))
+				return nil
+			},
+		})
+
 		initializeSecretsManagement = g.Add(flow.Task{
-			Name:   "Initializing secrets management",
-			Fn:     b.InitializeSecretsManagement,
-			SkipIf: kubeconfigFileExists,
+			Name:         "Initializing secrets management",
+			Fn:           b.InitializeSecretsManagement,
+			SkipIf:       kubeconfigFileExists,
+			Dependencies: flow.NewTaskIDs(test),
 		})
 		writeKubeletBootstrapKubeconfig = g.Add(flow.Task{
 			Name:         "Writing kubelet bootstrap kubeconfig with a fake token to disk to make kubelet start",
@@ -513,4 +535,59 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 	}
 
 	return botanist.NewGardenadmBotanistFromManifests(ctx, opts.Log, clientSet, opts.ConfigDir, true)
+}
+
+// LoadSecretsFromListFile reads a YAML/JSON file whose root object is a generic Kubernetes
+// List (kind: "List") and returns items decoded as corev1.Secret that have the label
+// managed-by=secrets-manager. Only items of kind Secret are supported; encountering a
+// non-Secret item results in an error.
+func LoadSecretsFromListFile(path string) ([]corev1.Secret, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading secret list file: %w", err)
+	}
+
+	// Normalize YAML → JSON for generic decoding.
+	jsonBytes, err := yaml.YAMLToJSON(data)
+	if err != nil {
+		return nil, fmt.Errorf("parsing YAML/JSON: %w", err)
+	}
+
+	// Generic List envelope: items are raw JSON documents.
+	type genericList struct {
+		metav1.TypeMeta `json:",inline"`
+		Items           []json.RawMessage `json:"items"`
+	}
+
+	var list genericList
+	if err := json.Unmarshal(jsonBytes, &list); err != nil {
+		return nil, fmt.Errorf("decoding List envelope: %w", err)
+	}
+
+	if list.Kind != "List" {
+		return nil, fmt.Errorf("expected kind=List, got kind=%q", list.Kind)
+	}
+
+	secrets := make([]corev1.Secret, 0, len(list.Items))
+	for i, item := range list.Items {
+		// Peek kind to ensure Secret before full decode
+		var meta metav1.TypeMeta
+		if err := json.Unmarshal(item, &meta); err != nil {
+			return nil, fmt.Errorf("item %d: decoding typemeta: %w", i, err)
+		}
+		if meta.Kind != "Secret" {
+			return nil, fmt.Errorf("item %d: unsupported kind %q (only Secret items are allowed)", i, meta.Kind)
+		}
+
+		var sec corev1.Secret
+		if err := json.Unmarshal(item, &sec); err != nil {
+			return nil, fmt.Errorf("item %d: decoding Secret: %w", i, err)
+		}
+		// Filter: only include secrets labeled as managed-by=secrets-manager
+		if sec.Labels != nil && sec.Labels["managed-by"] == "secrets-manager" {
+			secrets = append(secrets, sec)
+		}
+	}
+
+	return secrets, nil
 }
