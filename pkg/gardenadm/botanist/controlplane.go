@@ -112,6 +112,18 @@ func (b *GardenadmBotanist) staticControlPlaneComponents() []staticControlPlaneC
 					Hostnames: []string{resourcemanagerconstants.ServiceName},
 				})
 			}
+
+			for i := range pod.Spec.Containers {
+				args := pod.Spec.Containers[i].Args
+				filtered := make([]string, 0, len(args))
+				for _, a := range args {
+					if strings.HasPrefix(a, "--encryption-provider-config") {
+						continue
+					}
+					filtered = append(filtered, a)
+				}
+				pod.Spec.Containers[i].Args = filtered
+			}
 		}
 		mutateETCDPodFn = func(pod *corev1.Pod) {
 			// The pod name of the etcd pod must match `etcd-<role>-0`. However, when running as static pod, its pod name is
