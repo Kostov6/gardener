@@ -15,7 +15,9 @@ import (
 	"github.com/spf13/cobra"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
@@ -470,9 +472,10 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 		clientSet kubernetes.Interface
 		g         = flow.NewGraph("bootstrap")
 
-		// Simple test: if --secret-file is provided, load it as a List and print only the count of managed secrets.
+		// If --secret-file is provided, load it as a List and create/update those Secrets in the seed cluster
+		// control-plane namespace so they can later be migrated into the shoot control plane.
 		test = g.Add(flow.Task{
-			Name: "Loading user-provided secrets (count only)",
+			Name: "Applying user-provided secrets to seed (create-only)",
 			Fn: func(ctx context.Context) error {
 				if opts.SecretFile == "" {
 					return nil
@@ -481,7 +484,42 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 				if err != nil {
 					return fmt.Errorf("failed loading secrets from %s: %w", opts.SecretFile, err)
 				}
-				b.Logger.Info("Managed secrets found", "count", len(secrets))
+				created := 0
+				for i := range secrets {
+					sec := secrets[i]
+					if sec.Namespace == "" {
+						sec.Namespace = b.Shoot.ControlPlaneNamespace
+					}
+
+					// Check existence in seed cluster
+					existing := &corev1.Secret{}
+					err := b.SeedClientSet.Client().Get(ctx, crclient.ObjectKey{Name: sec.Name, Namespace: sec.Namespace}, existing)
+					if err == nil {
+						// Exists: skip
+						continue
+					}
+					if !apierrors.IsNotFound(err) {
+						return fmt.Errorf("checking secret %s/%s: %w", sec.Namespace, sec.Name, err)
+					}
+
+					// Create new secret
+					newSec := &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:        sec.Name,
+							Namespace:   sec.Namespace,
+							Labels:      sec.Labels,
+							Annotations: sec.Annotations,
+						},
+						Type:       sec.Type,
+						Data:       sec.Data,
+						StringData: sec.StringData,
+					}
+					if err := b.SeedClientSet.Client().Create(ctx, newSec); err != nil {
+						return fmt.Errorf("creating secret %s/%s: %w", sec.Namespace, sec.Name, err)
+					}
+					created++
+				}
+				b.Logger.Info("Applied managed secrets to seed (create-only)", "created", created)
 				return nil
 			},
 		})
