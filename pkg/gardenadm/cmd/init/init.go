@@ -561,7 +561,7 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 			Fn: func(ctx context.Context) error {
 				return b.MigrateSecrets(ctx, b.SeedClientSet.Client(), clientSet.Client())
 			},
-			SkipIf:       kubeconfigFileExists,
+			SkipIf:       kubeconfigFileExists || opts.Bootstrap,
 			Dependencies: flow.NewTaskIDs(initializeClientSet),
 		})
 	)
