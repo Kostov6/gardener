@@ -7,7 +7,6 @@ kind: Pod
 metadata:
   name: date-echo
 spec:
-  nodeName: machine-1
   containers:
   - name: date-echo
     image: busybox:1.36
