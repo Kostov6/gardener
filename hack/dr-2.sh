@@ -8,7 +8,7 @@ function copy_data() {
     success=0
     for i in $(seq 1 "$max_attempts"); do
         rm -rf data
-        output=$(kubectl cp gardenadm-unmanaged-infra/machine-0:/var/lib/etcd-main/data data 2>&1 || true)
+        output=$(kubectl cp gardenadm-unmanaged-infra/machine-3:/var/lib/etcd-main/data data 2>&1 || true)
         echo "$output"
         if echo "$output" | grep -qi 'file changed as we read it'; then
             echo "Attempt $i/$max_attempts: tar reported 'file changed as we read it', retrying..."
@@ -28,6 +28,9 @@ function copy_data() {
 make kind-single-node-up
 export KUBECONFIG=$PWD/example/gardener-local/kind/multi-zone/kubeconfig
 make gardenadm-up
+
+kubectl -n gardenadm-unmanaged-infra patch svc machine-0 --type='json' -p='[{"op":"replace","path":"/spec/selector/apps.kubernetes.io~1pod-index","value":"3"}]'
+
 kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm init -d /gardenadm/resources
 
 JOIN_COMMAND_1=$(kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm token create --print-join-command | tr -d '"')
@@ -36,13 +39,13 @@ kubectl -n gardenadm-unmanaged-infra exec -it machine-1 -- $JOIN_COMMAND_1
 JOIN_COMMAND_2=$(kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm token create --print-join-command | tr -d '"')
 kubectl -n gardenadm-unmanaged-infra exec -it machine-2 -- $JOIN_COMMAND_2
 
-kubectl -n gardenadm-unmanaged-infra port-forward pod/machine-0 6443:443 >/dev/null 2>&1 &
+kubectl -n gardenadm-unmanaged-infra port-forward pod/machine-3 6443:443 >/dev/null 2>&1 &
 PF_PID=$!
 trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
 sleep 1
 
 # Creating workload
-kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- cat /etc/kubernetes/admin.conf | sed 's/api.root.garden.local.gardener.cloud/localhost:6443/' > /tmp/shoot--garden--root.conf
+kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- cat /etc/kubernetes/admin.conf | sed 's/api.root.garden.local.gardener.cloud/localhost:6443/' > /tmp/shoot--garden--root.conf
 export KUBECONFIG=/tmp/shoot--garden--root.conf
 ./hack/creating-workload.sh
 export KUBECONFIG=$PWD/example/gardener-local/kind/multi-zone/kubeconfig
@@ -53,22 +56,22 @@ copy_data
 
 # Nuke machine
 kill "$PF_PID" 2>/dev/null || true
-kubectl -n gardenadm-unmanaged-infra delete pod machine-0 --force
+kubectl -n gardenadm-unmanaged-infra delete pod machine-3 --force
 sleep 3
 
 # Prepare for recovery
-kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- mkdir -p /var/lib/etcd-main
-kubectl cp data/ gardenadm-unmanaged-infra/machine-0:/var/lib/etcd-main/data
-kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- gardenadm init -d /gardenadm/resources --bootstrap
+kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- mkdir -p /var/lib/etcd-main
+kubectl cp data/ gardenadm-unmanaged-infra/machine-3:/var/lib/etcd-main/data
+kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm init -d /gardenadm/resources --bootstrap
 
-kubectl -n gardenadm-unmanaged-infra port-forward pod/machine-0 6443:443 >/dev/null 2>&1 &
+kubectl -n gardenadm-unmanaged-infra port-forward pod/machine-3 6443:443 >/dev/null 2>&1 &
 PF_PID=$!
 trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
 sleep 1
-kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- cat /etc/kubernetes/admin.conf | sed 's/api.root.garden.local.gardener.cloud/localhost:6443/' > /tmp/shoot--garden--root.conf
+kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- cat /etc/kubernetes/admin.conf | sed 's/api.root.garden.local.gardener.cloud/localhost:6443/' > /tmp/shoot--garden--root.conf
 export KUBECONFIG=/tmp/shoot--garden--root.conf
 rm -rf secrets.yaml
-./hack/prep-cluster.sh
+./hack/prep-cluster-2.sh machine-3
 export KUBECONFIG=$PWD/example/gardener-local/kind/multi-zone/kubeconfig
 
 
@@ -77,10 +80,13 @@ copy_data
 
 # Cleanup gardenadm os artefacts
 kill "$PF_PID" 2>/dev/null || true
-kubectl -n gardenadm-unmanaged-infra delete pod machine-0 --force
+kubectl -n gardenadm-unmanaged-infra delete pod machine-3 --force
 sleep 3
 
+
 # Recover
+kubectl -n gardenadm-unmanaged-infra patch svc machine-0 --type='json' -p='[{"op":"replace","path":"/spec/selector/apps.kubernetes.io~1pod-index","value":"0"}]'
+
 kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- mkdir -p /var/lib/etcd-main
 
 kubectl cp data/ gardenadm-unmanaged-infra/machine-0:/var/lib/etcd-main/data
@@ -88,4 +94,6 @@ kubectl cp secrets.yaml gardenadm-unmanaged-infra/machine-0:/secrets.yaml
 
 kubectl -n gardenadm-unmanaged-infra exec -it machine-0 --  gardenadm init -d /gardenadm/resources  --secret-file=/secrets.yaml --use-bootstrap-etcd || true
 
-kubectl -n gardenadm-unmanaged-infra exec -it machine-0 --  gardenadm init -d /gardenadm/resources  --secret-file=/secrets.yaml --use-bootstrap-etcd
+sleep 60
+
+kubectl -n gardenadm-unmanaged-infra exec -it machine-0 --  gardenadm init -d /gardenadm/resources  --secret-file=/secrets.yaml --use-bootstrap-etcd || true

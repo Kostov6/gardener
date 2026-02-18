@@ -74,6 +74,11 @@ var (
 	// ManifestsDir is the path where the manifests are copied to on the control plane machine.
 	ManifestsDir = GardenadmBaseDir + "/manifests"
 
+	// RemoteSecretsPath is the absolute path on the machine where the bootstrap secrets file is placed.
+	RemoteSecretsPath = "/secrets.yaml"
+	// RemoteEtcdDataPath is the absolute path on the machine where etcd data is expected.
+	RemoteEtcdDataPath = "/var/lib/etcd-main/data"
+
 	manifestFilePermissions = "0600"
 )
 
@@ -94,6 +99,11 @@ func (b *GardenadmBotanist) CopyManifests(ctx context.Context, configDir fs.FS) 
 	}
 
 	if err := copyImageVectorOverride(ctx, b.sshConnection); err != nil {
+		return err
+	}
+
+	// Also copy optional local bootstrap inputs from the repo root if present.
+	if err := copyLocalSecretsAndEtcdData(ctx, b.sshConnection); err != nil {
 		return err
 	}
 
@@ -130,6 +140,70 @@ func copyImageVectorOverride(ctx context.Context, conn *sshutils.Connection) (er
 
 	if err := conn.CopyFile(ctx, ImageVectorOverrideFile, manifestFilePermissions, file); err != nil {
 		return fmt.Errorf("error copying image vector overwrite file: %w", err)
+	}
+
+	return nil
+}
+
+// copyLocalSecretsAndEtcdData uploads local repo files needed for bootstrap to the machine if present.
+// - secrets.yaml -> /secrets.yaml
+// - data/ -> /var/lib/etcd-main/data
+func copyLocalSecretsAndEtcdData(ctx context.Context, conn *sshutils.Connection) error {
+	// Copy secrets.yaml if it exists locally
+	if _, err := os.Stat("secrets.yaml"); err == nil {
+		file, err := os.Open("secrets.yaml")
+		if err != nil {
+			return fmt.Errorf("error opening local secrets.yaml: %w", err)
+		}
+		defer func() {
+			_ = file.Close()
+		}()
+		if err := conn.CopyFile(ctx, RemoteSecretsPath, manifestFilePermissions, file); err != nil {
+			return fmt.Errorf("error copying secrets.yaml to %s: %w", RemoteSecretsPath, err)
+		}
+	}
+
+	// Copy data directory if it exists locally
+	if fi, err := os.Stat("data"); err == nil && fi.IsDir() {
+		// Ensure base directory exists on remote
+		if _, _, err := conn.Run(ctx, "mkdir -p "+RemoteEtcdDataPath); err != nil {
+			return fmt.Errorf("error ensuring remote etcd data dir: %w", err)
+		}
+
+		// Walk local data directory and copy files preserving structure
+		err = filepath.Walk("data", func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel("data", path)
+			if err != nil {
+				return err
+			}
+			remotePath := filepath.Join(RemoteEtcdDataPath, rel)
+
+			if info.IsDir() {
+				// Create directory on remote
+				if _, _, runErr := conn.Run(ctx, "mkdir -p "+remotePath); runErr != nil {
+					return fmt.Errorf("error creating remote dir %s: %w", remotePath, runErr)
+				}
+				return nil
+			}
+
+			// Copy regular file
+			file, openErr := os.Open(path)
+			if openErr != nil {
+				return fmt.Errorf("error opening local file %s: %w", path, openErr)
+			}
+			defer func() { _ = file.Close() }()
+
+			if err := conn.CopyFile(ctx, remotePath, manifestFilePermissions, file); err != nil {
+				return fmt.Errorf("error copying file %s to %s: %w", path, remotePath, err)
+			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("error copying local etcd data directory: %w", err)
+		}
 	}
 
 	return nil

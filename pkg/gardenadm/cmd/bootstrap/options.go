@@ -37,6 +37,8 @@ type Options struct {
 
 	// KubeconfigWriter is the optional writer for the file given in KubeconfigOutput (or stdout).
 	KubeconfigWriter io.Writer
+
+	Recover bool
 }
 
 // ParseArgs parses the arguments to the options.
@@ -104,6 +106,7 @@ func (o *Options) Complete() error {
 
 func (o *Options) addFlags(fs *pflag.FlagSet) {
 	o.ManifestOptions.AddFlags(fs)
+	fs.BoolVar(&o.Recover, "recover", false, "If set, the command will attempt to recover")
 	fs.StringVarP(&o.Kubeconfig, "kubeconfig", "k", "", "Path to the kubeconfig file pointing to the bootstrap cluster")
 	fs.StringVar(&o.KubeconfigOutput, "kubeconfig-output", "", "Path where the kubeconfig file for the shoot cluster should be written to. If not set, the kubeconfig is not written to disk. Set to '-' to write to stdout.")
 	fs.StringSliceVar(&o.BastionIngressCIDRs, "bastion-ingress-cidr", nil, "Restrict bastion host ingress to the given CIDRs. Defaults to your system's public IPs (IPv4 and/or IPv6) as detected using https://ipify.org/.")

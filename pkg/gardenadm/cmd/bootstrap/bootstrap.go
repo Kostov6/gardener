@@ -94,6 +94,11 @@ func run(ctx context.Context, opts *Options) error {
 		return fmt.Errorf("failed determining migrated extension kinds: %w", err)
 	}
 
+	command := fmt.Sprintf("%s=%q /opt/bin/gardenadm init -d %q --log-level=%s", imagevector.OverrideEnv, botanist.ImageVectorOverrideFile, botanist.ManifestsDir, opts.LogLevel)
+	if opts.Recover {
+		command = fmt.Sprintf("%s=%q /opt/bin/gardenadm init -d %q --log-level=%s --secret-file=/secrets.yaml --use-bootstrap-etcd", imagevector.OverrideEnv, botanist.ImageVectorOverrideFile, botanist.ManifestsDir, opts.LogLevel)
+	}
+
 	var (
 		g = flow.NewGraph("bootstrap")
 
@@ -292,11 +297,7 @@ func run(ctx context.Context, opts *Options) error {
 		bootstrapControlPlane = g.Add(flow.Task{
 			Name: "Bootstrapping control plane on the first control plane machine",
 			Fn: flow.TaskFn(func(ctx context.Context) error {
-				return b.SSHConnection().RunWithStreams(ctx, nil, opts.Out, opts.ErrOut,
-					fmt.Sprintf("%s=%q /opt/bin/gardenadm init -d %q --log-level=%s",
-						imagevector.OverrideEnv, botanist.ImageVectorOverrideFile, botanist.ManifestsDir, opts.LogLevel,
-					),
-				)
+				return b.SSHConnection().RunWithStreams(ctx, nil, opts.Out, opts.ErrOut, command)
 			}).Timeout(30 * time.Minute),
 			Dependencies: flow.NewTaskIDs(deployDNSRecord, copyManifests),
 		})
