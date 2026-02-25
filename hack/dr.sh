@@ -28,12 +28,12 @@ function copy_data() {
 make kind-single-node-up
 export KUBECONFIG=$PWD/example/gardener-local/kind/multi-zone/kubeconfig
 make gardenadm-up
-kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm init -d /gardenadm/resources
+kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- gardenadm init -d /gardenadm/resources
 
-JOIN_COMMAND_1=$(kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm token create --print-join-command | tr -d '"')
+JOIN_COMMAND_1=$(kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- gardenadm token create --print-join-command | tr -d '"')
 kubectl -n gardenadm-unmanaged-infra exec -it machine-1 -- $JOIN_COMMAND_1
 
-JOIN_COMMAND_2=$(kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm token create --print-join-command | tr -d '"')
+JOIN_COMMAND_2=$(kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- gardenadm token create --print-join-command | tr -d '"')
 kubectl -n gardenadm-unmanaged-infra exec -it machine-2 -- $JOIN_COMMAND_2
 
 kubectl -n gardenadm-unmanaged-infra port-forward pod/machine-0 6443:443 >/dev/null 2>&1 &
@@ -48,8 +48,9 @@ export KUBECONFIG=/tmp/shoot--garden--root.conf
 export KUBECONFIG=$PWD/example/gardener-local/kind/multi-zone/kubeconfig
 
 # Get etcd data
+echo "Waiting for 2 minutes before copying data to have a backup with more data in it..."
 rm -rf data
-copy_data
+sleep 120
 
 # Nuke machine
 kill "$PF_PID" 2>/dev/null || true
@@ -57,9 +58,8 @@ kubectl -n gardenadm-unmanaged-infra delete pod machine-0 --force
 sleep 3
 
 # Prepare for recovery
-kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- mkdir -p /var/lib/etcd-main
-kubectl cp data/ gardenadm-unmanaged-infra/machine-0:/var/lib/etcd-main/data
-kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- gardenadm init -d /gardenadm/resources --bootstrap
+local_backupbucket=$(ls dev/local-backupbuckets)
+kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- gardenadm init -d /gardenadm/resources --bootstrap --store-container ${local_backupbucket}
 
 kubectl -n gardenadm-unmanaged-infra port-forward pod/machine-0 6443:443 >/dev/null 2>&1 &
 PF_PID=$!

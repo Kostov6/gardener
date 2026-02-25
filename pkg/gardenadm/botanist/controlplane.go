@@ -45,7 +45,10 @@ import (
 )
 
 // PathKubeconfig is the path to a file on the control plane node containing an admin kubeconfig.
-var PathKubeconfig = filepath.Join(string(filepath.Separator), "etc", "kubernetes", "admin.conf")
+
+var (
+	PathKubeconfig = filepath.Join(string(filepath.Separator), "etc", "kubernetes", "admin.conf")
+)
 
 // KubeconfigSecretName is the name of the secret in the shoot namespace of the bootstrap cluster containing the
 // kubeconfig of the self-hosted shoot.
@@ -63,9 +66,24 @@ func (b *GardenadmBotanist) deployETCD(role string) func(context.Context) error 
 			return fmt.Errorf("failed fetching image %s: %w", imagevector.ContainerImageNameEtcd, err)
 		}
 
+		var initialize *bootstrapetcd.InitializeConfig
+		if role == v1beta1constants.ETCDRoleMain {
+			if b.StoreContainer != "" {
+				initialize = &bootstrapetcd.InitializeConfig{
+					EtcdbrctlImage:        "europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl",
+					StorageProvider:       "Local",
+					StoreContainer:        b.StoreContainer,
+					StorePrefix:           fmt.Sprintf("kube-system--%s/etcd-main", b.StoreContainer),
+					BackupBucketsHostPath: "/etc/gardener/local-backupbuckets",
+				}
+			}
+
+		}
+
 		return bootstrapetcd.New(b.SeedClientSet.Client(), b.Shoot.ControlPlaneNamespace, b.SecretsManager, bootstrapetcd.Values{
 			Image:       image.String(),
 			Role:        role,
+			Initialize:  initialize,
 			PortClient:  portClient,
 			PortPeer:    portPeer,
 			PortMetrics: portMetrics,
