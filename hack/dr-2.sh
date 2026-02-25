@@ -51,8 +51,9 @@ export KUBECONFIG=/tmp/shoot--garden--root.conf
 export KUBECONFIG=$PWD/example/gardener-local/kind/multi-zone/kubeconfig
 
 # Get etcd data
+echo "Waiting for 5 minutes before copying data to have a backup with more data in it..."
 rm -rf data
-copy_data
+sleep 300
 
 # Nuke machine
 kill "$PF_PID" 2>/dev/null || true
@@ -60,9 +61,8 @@ kubectl -n gardenadm-unmanaged-infra delete pod machine-3 --force
 sleep 3
 
 # Prepare for recovery
-kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- mkdir -p /var/lib/etcd-main
-kubectl cp data/ gardenadm-unmanaged-infra/machine-3:/var/lib/etcd-main/data
-kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm init -d /gardenadm/resources --bootstrap
+local_backupbucket=$(ls dev/local-backupbuckets)
+kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm init -d /gardenadm/resources --bootstrap --store-container ${local_backupbucket}
 
 kubectl -n gardenadm-unmanaged-infra port-forward pod/machine-3 6443:443 >/dev/null 2>&1 &
 PF_PID=$!

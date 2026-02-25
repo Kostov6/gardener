@@ -168,11 +168,11 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 								"--storage-provider=" + cfg.StorageProvider,
 								"--store-container=" + cfg.StoreContainer,
 								"--store-prefix=" + cfg.StorePrefix,
-								"--data-dir=" + dataDir + "/new.etcd/",
+								"--data-dir=" + dataDir + "/new.etcd",
 								"--restoration-temp-snapshots-dir=" + cfg.RestorationTempSnapshotsDir,
 							},
 							Env: []corev1.EnvVar{
-								{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+								{Name: "POD_NAME", Value: "etcd-bootstrap-main"},
 								{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
 							},
 							VolumeMounts: []corev1.VolumeMount{
@@ -187,7 +187,7 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 						Command: []string{
 							"etcd",
 							"--name=" + statefulSet.Name,
-							"--data-dir=" + volumeMountPathData,
+							"--data-dir=" + volumeMountPathData + "/new.etcd",
 							"--experimental-initial-corrupt-check=true",
 							"--experimental-watch-progress-notify-interval=5s",
 							"--snapshot-count=10000",
@@ -240,7 +240,7 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 						volumes := []corev1.Volume{{
 							Name: volumeNameData,
 							VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
-								Path: staticpodtranslator.StatefulSetVolumeClaimTemplateHostPath(etcd.Name(e.values.Role)) + "/new.etcd",
+								Path: staticpodtranslator.StatefulSetVolumeClaimTemplateHostPath(etcd.Name(e.values.Role)),
 								Type: ptr.To(corev1.HostPathDirectoryOrCreate),
 							}},
 						}, {

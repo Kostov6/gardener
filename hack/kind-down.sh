@@ -46,6 +46,6 @@ if [[ "$PATH_KUBECONFIG" == *"dev-setup/gardenlet/components/kubeconfigs/seed-lo
   rm -f "${PATH_KUBECONFIG}-gardener-operator"
 fi
 
-# if [[ "$KEEP_BACKUPBUCKETS_DIRECTORY" == "false" ]]; then
-#   rm -rf "$(dirname "$0")/../dev/local-backupbuckets"
-# fi
+if [[ "$KEEP_BACKUPBUCKETS_DIRECTORY" == "false" ]]; then
+  rm -rf "$(dirname "$0")/../dev/local-backupbuckets"
+fi

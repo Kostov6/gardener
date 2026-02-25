@@ -472,6 +472,7 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 	if err != nil {
 		return nil, err
 	}
+	b.StoreContainer = opts.StoreContainer
 
 	kubeconfigFileExists, err := b.FS.Exists(botanist.PathKubeconfig)
 	if err != nil {
@@ -492,7 +493,7 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 				configDir := "/var/etcd/config"
 				configPath := configDir + "/etcd.conf.yaml"
 				configContent := `advertise-client-urls:
-  etcd-bootstrap-main-machine-0:
+  etcd-bootstrap-main:
   - https://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2379
 auto-compaction-mode: periodic
 auto-compaction-retention: 30m
@@ -505,9 +506,9 @@ client-transport-security:
 data-dir: /var/etcd/data/new.etcd
 enable-v2: false
 initial-advertise-peer-urls:
-  etcd-bootstrap-main-machine-0:
+  etcd-bootstrap-main:
   - http://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2380
-initial-cluster: etcd-bootstrap-main-machine-0=http://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2380
+initial-cluster: etcd-bootstrap-main=http://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2380
 initial-cluster-state: new
 initial-cluster-token: etcd-cluster
 listen-client-urls: https://0.0.0.0:2379
@@ -522,6 +523,7 @@ snapshot-count: 10000
 				}
 				return os.WriteFile(configPath, []byte(configContent), 0644)
 			},
+			SkipIf: opts.StoreContainer == "",
 		})
 
 		// If --secret-file is provided, load it as a List and create/update those Secrets in the seed cluster
