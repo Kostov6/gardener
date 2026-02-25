@@ -63,9 +63,21 @@ func (b *GardenadmBotanist) deployETCD(role string) func(context.Context) error 
 			return fmt.Errorf("failed fetching image %s: %w", imagevector.ContainerImageNameEtcd, err)
 		}
 
+		var initialize *bootstrapetcd.InitializeConfig
+		if role == v1beta1constants.ETCDRoleMain {
+			initialize = &bootstrapetcd.InitializeConfig{
+				EtcdbrctlImage:        "europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl",
+				StorageProvider:       "Local",
+				StoreContainer:        "d2b51daf-fc3d-4e31-8df4-5a6d4179fbba",
+				StorePrefix:           "kube-system--d2b51daf-fc3d-4e31-8df4-5a6d4179fbba/etcd-main",
+				BackupBucketsHostPath: "/etc/gardener/local-backupbuckets",
+			}
+		}
+
 		return bootstrapetcd.New(b.SeedClientSet.Client(), b.Shoot.ControlPlaneNamespace, b.SecretsManager, bootstrapetcd.Values{
 			Image:       image.String(),
 			Role:        role,
+			Initialize:  initialize,
 			PortClient:  portClient,
 			PortPeer:    portPeer,
 			PortMetrics: portMetrics,

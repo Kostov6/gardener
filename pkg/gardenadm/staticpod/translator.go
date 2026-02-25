@@ -192,3 +192,7 @@ func translateVolumes(ctx context.Context, c client.Client, pod *corev1.Pod, sou
 func StatefulSetVolumeClaimTemplateHostPath(volumeClaimTemplateName string) string {
 	return fmt.Sprintf("/var/lib/%s/data", volumeClaimTemplateName)
 }
+
+func StatefulSetVolumeClaimTemplateHostPathParent(volumeClaimTemplateName string) string {
+	return fmt.Sprintf("/var/lib/%s", volumeClaimTemplateName)
+}

@@ -28,18 +28,43 @@ import (
 
 const (
 	volumeNameData          = "data"
+	volumeNameBackupBuckets = "backup-buckets"
+	volumeNameRestoreTmp    = "restoration-tmp"
 	volumeNameETCDCA        = "etcd-ca"
 	volumeNameServerTLS     = "etcd-server-tls"
 	volumeNameClientTLS     = "etcd-client-tls"
 	volumeNamePeerCA        = "etcd-peer-ca"
 	volumeNamePeerServerTLS = "etcd-peer-server-tls"
+	volumeNameEtcdConf      = "etcd-conf"
 
 	volumeMountPathData          = "/var/etcd/data"
+	volumeMountPathBackupBuckets = "/root"
 	volumeMountPathETCDCA        = "/var/etcd/ssl/ca"
 	volumeMountPathServerTLS     = "/var/etcd/ssl/server"
 	volumeMountPathPeerCA        = "/var/etcd/ssl/peer/ca"
 	volumeMountPathPeerServerTLS = "/var/etcd/ssl/peer/server"
+	volumeMountPathRestoreTmp    = "/tmp/restorationtmp"
+	volumeMountPathEtcdConf      = "/etc/etcd"
+	hostPathEtcdConf             = "/var/etcd/config"
 )
+
+const (
+	defaultEtcdbrctlImage               = "europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl:latest"
+	defaultBackupBucketsHostPath        = "/etc/gardener/local-backupbuckets"
+	defaultRestorationTempSnapshotsPath = volumeMountPathRestoreTmp
+)
+
+// InitializeConfig contains configuration for running `etcdbrctl initialize` before starting the bootstrap etcd.
+//
+// The init container is only added when this config is not nil and all required fields are set.
+type InitializeConfig struct {
+	EtcdbrctlImage              string
+	StorageProvider             string
+	StoreContainer              string
+	StorePrefix                 string
+	RestorationTempSnapshotsDir string
+	BackupBucketsHostPath       string
+}
 
 // Values is a set of configuration values for the Etcd component.
 type Values struct {
@@ -47,6 +72,8 @@ type Values struct {
 	Image string
 	// Role is the role of this etcd instance (main or events).
 	Role string
+	// Initialize configures an optional init container that runs `etcdbrctl initialize`.
+	Initialize *InitializeConfig
 	// PortClient is the port for the client connections.
 	PortClient int32
 	// PortPeer is the port for the peer connections.
@@ -104,13 +131,58 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 	_, err = controllerutils.GetAndCreateOrMergePatch(ctx, e.client, statefulSet, func() error {
 		statefulSet.Labels = e.labels()
 		statefulSet.Spec = appsv1.StatefulSetSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: e.labels(),
-			},
+			Selector: &metav1.LabelSelector{MatchLabels: e.labels()},
 			Replicas: ptr.To[int32](0),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: e.labels()},
 				Spec: corev1.PodSpec{
+					InitContainers: func() []corev1.Container {
+						if e.values.Initialize == nil {
+							return nil
+						}
+
+						cfg := *e.values.Initialize
+						if cfg.StorageProvider == "" || cfg.StoreContainer == "" || cfg.StorePrefix == "" {
+							return nil
+						}
+						if cfg.EtcdbrctlImage == "" {
+							cfg.EtcdbrctlImage = defaultEtcdbrctlImage
+						}
+						if cfg.RestorationTempSnapshotsDir == "" {
+							cfg.RestorationTempSnapshotsDir = defaultRestorationTempSnapshotsPath
+						}
+
+						dataDir := staticpodtranslator.StatefulSetVolumeClaimTemplateHostPath(etcd.Name(e.values.Role))
+
+						return []corev1.Container{{
+							Name:            "etcdbrctl-initialize",
+							Image:           cfg.EtcdbrctlImage,
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							SecurityContext: &corev1.SecurityContext{
+								RunAsUser:                ptr.To[int64](0),
+								RunAsGroup:               ptr.To[int64](0),
+								AllowPrivilegeEscalation: ptr.To(false),
+							},
+							Args: []string{
+								"initialize",
+								"--storage-provider=" + cfg.StorageProvider,
+								"--store-container=" + cfg.StoreContainer,
+								"--store-prefix=" + cfg.StorePrefix,
+								"--data-dir=" + dataDir + "/new.etcd/",
+								"--restoration-temp-snapshots-dir=" + cfg.RestorationTempSnapshotsDir,
+							},
+							Env: []corev1.EnvVar{
+								{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+								{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: volumeNameBackupBuckets, MountPath: volumeMountPathBackupBuckets},
+								{Name: volumeNameData, MountPath: staticpodtranslator.StatefulSetVolumeClaimTemplateHostPath(etcd.Name(e.values.Role))},
+								{Name: volumeNameRestoreTmp, MountPath: cfg.RestorationTempSnapshotsDir},
+								{Name: volumeNameEtcdConf, MountPath: "/var/etcd/config"},
+							},
+						}}
+					}(),
 					Containers: []corev1.Container{{
 						Command: []string{
 							"etcd",
@@ -137,36 +209,17 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 						Image:           e.values.Image,
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						LivenessProbe: &corev1.Probe{
-							ProbeHandler: corev1.ProbeHandler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Host:   "localhost",
-									Path:   "/livez",
-									Scheme: corev1.URISchemeHTTP,
-									Port:   intstr.FromInt32(e.values.PortMetrics),
-								},
-							},
+							ProbeHandler:        corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Host: "localhost", Path: "/livez", Scheme: corev1.URISchemeHTTP, Port: intstr.FromInt32(e.values.PortMetrics)}},
 							SuccessThreshold:    1,
 							FailureThreshold:    8,
 							InitialDelaySeconds: 10,
 							PeriodSeconds:       10,
 							TimeoutSeconds:      15,
 						},
-						Name: "etcd",
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("100Mi"),
-							},
-						},
+						Name:      "etcd",
+						Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("100Mi")}},
 						StartupProbe: &corev1.Probe{
-							ProbeHandler: corev1.ProbeHandler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Host:   "localhost",
-									Path:   "/health",
-									Scheme: corev1.URISchemeHTTP,
-									Port:   intstr.FromInt32(e.values.PortMetrics),
-								},
-							},
+							ProbeHandler:        corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Host: "localhost", Path: "/health", Scheme: corev1.URISchemeHTTP, Port: intstr.FromInt32(e.values.PortMetrics)}},
 							SuccessThreshold:    1,
 							FailureThreshold:    24,
 							InitialDelaySeconds: 10,
@@ -174,90 +227,54 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 							TimeoutSeconds:      15,
 						},
 						VolumeMounts: []corev1.VolumeMount{
-							{
-								MountPath: volumeMountPathData,
-								Name:      volumeNameData,
-							},
-							{
-								MountPath: volumeMountPathETCDCA,
-								Name:      volumeNameETCDCA,
-							},
-							{
-								MountPath: volumeMountPathServerTLS,
-								Name:      volumeNameServerTLS,
-							},
-							{
-								MountPath: "/var/etcd/ssl/client",
-								Name:      volumeNameClientTLS,
-							},
-							{
-								MountPath: volumeMountPathPeerCA,
-								Name:      volumeNamePeerCA,
-							},
-							{
-								MountPath: volumeMountPathPeerServerTLS,
-								Name:      volumeNamePeerServerTLS,
-							},
+							{Name: volumeNameData, MountPath: volumeMountPathData},
+							{Name: volumeNameETCDCA, MountPath: volumeMountPathETCDCA},
+							{Name: volumeNameServerTLS, MountPath: volumeMountPathServerTLS},
+							{Name: volumeNameClientTLS, MountPath: "/var/etcd/ssl/client"},
+							{Name: volumeNamePeerCA, MountPath: volumeMountPathPeerCA},
+							{Name: volumeNamePeerServerTLS, MountPath: volumeMountPathPeerServerTLS},
 						},
 					}},
-					SecurityContext: &corev1.PodSecurityContext{
-						SeccompProfile: &corev1.SeccompProfile{
-							Type: corev1.SeccompProfileTypeRuntimeDefault,
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
+					SecurityContext: &corev1.PodSecurityContext{SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}},
+					Volumes: func() []corev1.Volume {
+						volumes := []corev1.Volume{{
 							Name: volumeNameData,
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									// etcds managed by etcd-druid store their data in <data-dir>/new.etcd, so let's
-									// prepare for the take-over already now
-									Path: staticpodtranslator.StatefulSetVolumeClaimTemplateHostPath(etcd.Name(e.values.Role)) + "/new.etcd",
-									Type: ptr.To(corev1.HostPathDirectoryOrCreate),
-								},
-							},
-						},
-						{
-							Name: volumeNameETCDCA,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: etcdCASecret.Name,
-								},
-							},
-						},
-						{
-							Name: volumeNamePeerCA,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: etcdPeerCASecretName,
-								},
-							},
-						},
-						{
-							Name: volumeNameServerTLS,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: serverSecret.Name,
-								},
-							},
-						},
-						{
-							Name: volumeNameClientTLS,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: clientSecret.Name,
-								},
-							},
-						},
-						{
-							Name: volumeNamePeerServerTLS,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: peerServerSecretName,
-								},
-							},
-						},
-					},
+							VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
+								Path: staticpodtranslator.StatefulSetVolumeClaimTemplateHostPath(etcd.Name(e.values.Role)) + "/new.etcd",
+								Type: ptr.To(corev1.HostPathDirectoryOrCreate),
+							}},
+						}, {
+							Name: volumeNameEtcdConf,
+							VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
+								Path: hostPathEtcdConf,
+								Type: ptr.To(corev1.HostPathDirectoryOrCreate),
+							}},
+						}}
+
+						if e.values.Initialize != nil {
+							cfg := *e.values.Initialize
+							if cfg.StorageProvider != "" && cfg.StoreContainer != "" && cfg.StorePrefix != "" {
+								hostPath := cfg.BackupBucketsHostPath
+								if hostPath == "" {
+									hostPath = defaultBackupBucketsHostPath
+								}
+								volumes = append(volumes,
+									corev1.Volume{Name: volumeNameBackupBuckets, VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: hostPath, Type: ptr.To(corev1.HostPathDirectoryOrCreate)}}},
+									corev1.Volume{Name: volumeNameRestoreTmp, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+								)
+							}
+						}
+
+						volumes = append(volumes,
+							corev1.Volume{Name: volumeNameETCDCA, VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: etcdCASecret.Name}}},
+							corev1.Volume{Name: volumeNamePeerCA, VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: etcdPeerCASecretName}}},
+							corev1.Volume{Name: volumeNameServerTLS, VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: serverSecret.Name}}},
+							corev1.Volume{Name: volumeNameClientTLS, VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: clientSecret.Name}}},
+							corev1.Volume{Name: volumeNamePeerServerTLS, VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: peerServerSecretName}}},
+						)
+
+						return volumes
+					}(),
 				},
 			},
 		}

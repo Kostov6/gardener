@@ -486,6 +486,44 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 		clientSet kubernetes.Interface
 		g         = flow.NewGraph("bootstrap")
 
+		createEtcdConfig = g.Add(flow.Task{
+			Name: "Create /var/etcd/config/etcd.conf.yaml for testing",
+			Fn: func(ctx context.Context) error {
+				configDir := "/var/etcd/config"
+				configPath := configDir + "/etcd.conf.yaml"
+				configContent := `advertise-client-urls:
+  etcd-bootstrap-main-machine-0:
+  - https://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2379
+auto-compaction-mode: periodic
+auto-compaction-retention: 30m
+client-transport-security:
+  auto-tls: false
+  cert-file: /var/etcd/ssl/server/tls.crt
+  client-cert-auth: true
+  key-file: /var/etcd/ssl/server/tls.key
+  trusted-ca-file: /var/etcd/ssl/ca/bundle.crt
+data-dir: /var/etcd/data/new.etcd
+enable-v2: false
+initial-advertise-peer-urls:
+  etcd-bootstrap-main-machine-0:
+  - http://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2380
+initial-cluster: etcd-bootstrap-main-machine-0=http://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2380
+initial-cluster-state: new
+initial-cluster-token: etcd-cluster
+listen-client-urls: https://0.0.0.0:2379
+listen-peer-urls: http://0.0.0.0:2380
+metrics: extensive
+name: etcd-config
+quota-backend-bytes: 8589934592
+snapshot-count: 10000
+`
+				if err := os.MkdirAll(configDir, 0755); err != nil {
+					return err
+				}
+				return os.WriteFile(configPath, []byte(configContent), 0644)
+			},
+		})
+
 		// If --secret-file is provided, load it as a List and create/update those Secrets in the seed cluster
 		// control-plane namespace so they can later be migrated into the shoot control plane.
 		test = g.Add(flow.Task{
@@ -542,7 +580,7 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 			Name:         "Initializing secrets management",
 			Fn:           b.InitializeSecretsManagement,
 			SkipIf:       kubeconfigFileExists,
-			Dependencies: flow.NewTaskIDs(test),
+			Dependencies: flow.NewTaskIDs(test, createEtcdConfig),
 		})
 		writeKubeletBootstrapKubeconfig = g.Add(flow.Task{
 			Name:         "Writing kubelet bootstrap kubeconfig with a fake token to disk to make kubelet start",
