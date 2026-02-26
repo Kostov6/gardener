@@ -253,6 +253,30 @@ func run(ctx context.Context, opts *Options) error {
 			Dependencies: flow.NewTaskIDs(deployCoreDNS),
 		})
 
+		waitUntilControlPlaneNodeCriticalComponentsTaintRemoved = g.Add(flow.Task{
+			Name: "Waiting until control-plane node is ready for critical components scheduling",
+			Fn: flow.TaskFn(func(ctx context.Context) error {
+				nodes := &corev1.NodeList{}
+				if err := b.SeedClientSet.Client().List(ctx, nodes, crclient.MatchingLabels(map[string]string{"worker.gardener.cloud/pool": "control-plane"})); err != nil {
+					return fmt.Errorf("listing control-plane nodes: %w", err)
+				}
+				if len(nodes.Items) == 0 {
+					return fmt.Errorf("no node with label worker.gardener.cloud/pool=control-plane found")
+				}
+
+				for _, node := range nodes.Items {
+					for _, taint := range node.Spec.Taints {
+						if taint.Key == "node.gardener.cloud/critical-components-not-ready" && taint.Effect == corev1.TaintEffectNoSchedule {
+							return fmt.Errorf("node %q still has taint %q with effect %q", node.Name, taint.Key, taint.Effect)
+						}
+					}
+				}
+
+				return nil
+			}).RetryUntilTimeout(5*time.Second, 10*time.Minute),
+			Dependencies: flow.NewTaskIDs(waitUntilCoreDNSReady),
+		})
+
 		deployGardenerResourceManagerIntoPodNetwork = g.Add(flow.Task{
 			Name: "Redeploying gardener-resource-manager into pod network",
 			Fn: func(ctx context.Context) error {
@@ -265,7 +289,7 @@ func run(ctx context.Context, opts *Options) error {
 				)(ctx)
 			},
 			SkipIf:       podNetworkAvailable,
-			Dependencies: flow.NewTaskIDs(waitUntilCoreDNSReady),
+			Dependencies: flow.NewTaskIDs(waitUntilControlPlaneNodeCriticalComponentsTaintRemoved),
 		})
 		waitUntilGardenerResourceManagerInPodNetworkReady = g.Add(flow.Task{
 			Name: "Waiting until gardener-resource-manager (in pod network) reports readiness",
