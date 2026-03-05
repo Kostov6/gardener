@@ -172,7 +172,7 @@ func run(ctx context.Context, opts *Options) error {
 			Fn: flow.Parallel(
 				b.Components.RuntimeResourceManager.Wait,
 				b.Shoot.Components.ControlPlane.ResourceManager.Wait,
-			),
+			).RetryUntilTimeout(1*time.Minute, 5*time.Minute),
 			Dependencies: flow.NewTaskIDs(deployGardenerResourceManager),
 		})
 		_ = g.Add(flow.Task{
@@ -196,7 +196,7 @@ func run(ctx context.Context, opts *Options) error {
 		})
 		waitUntilExtensionControllersReady = g.Add(flow.Task{
 			Name:         "Waiting until extension controllers report readiness",
-			Fn:           b.WaitUntilExtensionControllerInstallationsHealthy,
+			Fn:           flow.TaskFn(func(ctx context.Context) error { return b.WaitUntilExtensionControllerInstallationsHealthy(ctx) }).RetryUntilTimeout(1*time.Minute, 5*time.Minute),
 			Dependencies: flow.NewTaskIDs(deployExtensionControllers),
 		})
 		deployNetworkPolicies = g.Add(flow.Task{
@@ -296,7 +296,7 @@ func run(ctx context.Context, opts *Options) error {
 			Fn: flow.Parallel(
 				b.Components.RuntimeResourceManager.Wait,
 				b.Shoot.Components.ControlPlane.ResourceManager.Wait,
-			),
+			).RetryUntilTimeout(time.Minute, 15*time.Minute),
 			SkipIf:       podNetworkAvailable,
 			Dependencies: flow.NewTaskIDs(deployGardenerResourceManagerIntoPodNetwork),
 		})
@@ -310,7 +310,7 @@ func run(ctx context.Context, opts *Options) error {
 		})
 		waitUntilExtensionControllersInPodNetworkReady = g.Add(flow.Task{
 			Name:         "Waiting until extension controllers (in pod network) report readiness",
-			Fn:           b.WaitUntilExtensionControllerInstallationsHealthy,
+			Fn:           flow.TaskFn(b.WaitUntilExtensionControllerInstallationsHealthy).RetryUntilTimeout(1*time.Minute, 10*time.Minute),
 			SkipIf:       podNetworkAvailable,
 			Dependencies: flow.NewTaskIDs(deployExtensionControllersIntoPodNetwork),
 		})
@@ -355,6 +355,7 @@ func run(ctx context.Context, opts *Options) error {
 		deployEtcdDruid = g.Add(flow.Task{
 			Name:         "Deploying ETCD Druid",
 			Fn:           b.DeployEtcdDruid,
+			SkipIf:       opts.UseBootstrapEtcd,
 			Dependencies: flow.NewTaskIDs(syncPointBootstrapped),
 		})
 		deployEtcds = g.Add(flow.Task{
@@ -406,7 +407,7 @@ func run(ctx context.Context, opts *Options) error {
 					b.Shoot.Components.ControlPlane.ResourceManager.Wait,
 				),
 				b.WaitUntilExtensionControllerInstallationsHealthy,
-			).RetryUntilTimeout(time.Second, 5*time.Minute),
+			).RetryUntilTimeout(time.Second, 10*time.Minute),
 			Dependencies: flow.NewTaskIDs(waitUntilKubeControllerManagerIsActive),
 		})
 		deployMachineControllerManager = g.Add(flow.Task{
@@ -511,45 +512,6 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 		clientSet kubernetes.Interface
 		g         = flow.NewGraph("bootstrap")
 
-		createEtcdConfig = g.Add(flow.Task{
-			Name: "Create /var/etcd/config/etcd.conf.yaml for testing",
-			Fn: func(ctx context.Context) error {
-				configDir := "/var/etcd/config"
-				configPath := configDir + "/etcd.conf.yaml"
-				configContent := `advertise-client-urls:
-  etcd-bootstrap-main:
-  - https://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2379
-auto-compaction-mode: periodic
-auto-compaction-retention: 30m
-client-transport-security:
-  auto-tls: false
-  cert-file: /var/etcd/ssl/server/tls.crt
-  client-cert-auth: true
-  key-file: /var/etcd/ssl/server/tls.key
-  trusted-ca-file: /var/etcd/ssl/ca/bundle.crt
-data-dir: /var/etcd/data/new.etcd
-enable-v2: false
-initial-advertise-peer-urls:
-  etcd-bootstrap-main:
-  - http://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2380
-initial-cluster: etcd-bootstrap-main=http://etcd-bootstrap-main.etcd-main-peer.kube-system.svc:2380
-initial-cluster-state: new
-initial-cluster-token: etcd-cluster
-listen-client-urls: https://0.0.0.0:2379
-listen-peer-urls: http://0.0.0.0:2380
-metrics: extensive
-name: etcd-config
-quota-backend-bytes: 8589934592
-snapshot-count: 10000
-`
-				if err := os.MkdirAll(configDir, 0755); err != nil {
-					return err
-				}
-				return os.WriteFile(configPath, []byte(configContent), 0644)
-			},
-			SkipIf: opts.StoreContainer == "",
-		})
-
 		// If --secret-file is provided, load it as a List and create/update those Secrets in the seed cluster
 		// control-plane namespace so they can later be migrated into the shoot control plane.
 		test = g.Add(flow.Task{
@@ -606,7 +568,7 @@ snapshot-count: 10000
 			Name:         "Initializing secrets management",
 			Fn:           b.InitializeSecretsManagement,
 			SkipIf:       kubeconfigFileExists,
-			Dependencies: flow.NewTaskIDs(test, createEtcdConfig),
+			Dependencies: flow.NewTaskIDs(test),
 		})
 		writeKubeletBootstrapKubeconfig = g.Add(flow.Task{
 			Name:         "Writing kubelet bootstrap kubeconfig with a fake token to disk to make kubelet start",
