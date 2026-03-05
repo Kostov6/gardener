@@ -36,6 +36,7 @@ const (
 	volumeNamePeerCA        = "etcd-peer-ca"
 	volumeNamePeerServerTLS = "etcd-peer-server-tls"
 	volumeNameEtcdConf      = "etcd-conf"
+	etcdConfigFileName      = "etcd.conf.yaml"
 
 	volumeMountPathData          = "/var/etcd/data"
 	volumeMountPathBackupBuckets = "/root"
@@ -44,8 +45,7 @@ const (
 	volumeMountPathPeerCA        = "/var/etcd/ssl/peer/ca"
 	volumeMountPathPeerServerTLS = "/var/etcd/ssl/peer/server"
 	volumeMountPathRestoreTmp    = "/tmp/restorationtmp"
-	volumeMountPathEtcdConf      = "/etc/etcd"
-	hostPathEtcdConf             = "/var/etcd/config"
+	volumeMountPathEtcdConf      = "/var/etcd/config"
 )
 
 const (
@@ -127,6 +127,18 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 		return fmt.Errorf("failed to generate etcd peer certificates: %w", err)
 	}
 
+	if e.shouldRunInitialize() {
+		configMap := e.emptyEtcdConfigMap()
+		_, err = controllerutils.GetAndCreateOrMergePatch(ctx, e.client, configMap, func() error {
+			configMap.Labels = e.labels()
+			configMap.Data = map[string]string{etcdConfigFileName: e.etcdInitializeConfig()}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed creating or patching etcd initialize config ConfigMap: %w", err)
+		}
+	}
+
 	statefulSet := e.emptyStatefulSet()
 	_, err = controllerutils.GetAndCreateOrMergePatch(ctx, e.client, statefulSet, func() error {
 		statefulSet.Labels = e.labels()
@@ -137,14 +149,11 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 				ObjectMeta: metav1.ObjectMeta{Labels: e.labels()},
 				Spec: corev1.PodSpec{
 					InitContainers: func() []corev1.Container {
-						if e.values.Initialize == nil {
+						if !e.shouldRunInitialize() {
 							return nil
 						}
 
 						cfg := *e.values.Initialize
-						if cfg.StorageProvider == "" || cfg.StoreContainer == "" || cfg.StorePrefix == "" {
-							return nil
-						}
 						if cfg.EtcdbrctlImage == "" {
 							cfg.EtcdbrctlImage = defaultEtcdbrctlImage
 						}
@@ -179,7 +188,7 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 								{Name: volumeNameBackupBuckets, MountPath: volumeMountPathBackupBuckets},
 								{Name: volumeNameData, MountPath: staticpodtranslator.StatefulSetVolumeClaimTemplateHostPath(etcd.Name(e.values.Role))},
 								{Name: volumeNameRestoreTmp, MountPath: cfg.RestorationTempSnapshotsDir},
-								{Name: volumeNameEtcdConf, MountPath: "/var/etcd/config"},
+								{Name: volumeNameEtcdConf, MountPath: volumeMountPathEtcdConf},
 							},
 						}}
 					}(),
@@ -243,26 +252,19 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 								Path: staticpodtranslator.StatefulSetVolumeClaimTemplateHostPath(etcd.Name(e.values.Role)),
 								Type: ptr.To(corev1.HostPathDirectoryOrCreate),
 							}},
-						}, {
-							Name: volumeNameEtcdConf,
-							VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
-								Path: hostPathEtcdConf,
-								Type: ptr.To(corev1.HostPathDirectoryOrCreate),
-							}},
 						}}
 
-						if e.values.Initialize != nil {
+						if e.shouldRunInitialize() {
 							cfg := *e.values.Initialize
-							if cfg.StorageProvider != "" && cfg.StoreContainer != "" && cfg.StorePrefix != "" {
-								hostPath := cfg.BackupBucketsHostPath
-								if hostPath == "" {
-									hostPath = defaultBackupBucketsHostPath
-								}
-								volumes = append(volumes,
-									corev1.Volume{Name: volumeNameBackupBuckets, VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: hostPath, Type: ptr.To(corev1.HostPathDirectoryOrCreate)}}},
-									corev1.Volume{Name: volumeNameRestoreTmp, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-								)
+							hostPath := cfg.BackupBucketsHostPath
+							if hostPath == "" {
+								hostPath = defaultBackupBucketsHostPath
 							}
+							volumes = append(volumes,
+								corev1.Volume{Name: volumeNameBackupBuckets, VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: hostPath, Type: ptr.To(corev1.HostPathDirectoryOrCreate)}}},
+								corev1.Volume{Name: volumeNameRestoreTmp, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+								corev1.Volume{Name: volumeNameEtcdConf, VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: e.etcdConfigMapName()}, Items: []corev1.KeyToPath{{Key: etcdConfigFileName, Path: etcdConfigFileName}}}}},
+							)
 						}
 
 						volumes = append(volumes,
@@ -291,6 +293,52 @@ func (e *etcdDeployer) Destroy(_ context.Context) error {
 
 func (e *etcdDeployer) emptyStatefulSet() *appsv1.StatefulSet {
 	return &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: Name(e.values.Role), Namespace: e.namespace}}
+}
+
+func (e *etcdDeployer) emptyEtcdConfigMap() *corev1.ConfigMap {
+	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: e.etcdConfigMapName(), Namespace: e.namespace}}
+}
+
+func (e *etcdDeployer) etcdConfigMapName() string {
+	return Name(e.values.Role) + "-config"
+}
+
+func (e *etcdDeployer) shouldRunInitialize() bool {
+	if e.values.Initialize == nil {
+		return false
+	}
+
+	cfg := *e.values.Initialize
+	return cfg.StorageProvider != "" && cfg.StoreContainer != "" && cfg.StorePrefix != ""
+}
+
+func (e *etcdDeployer) etcdInitializeConfig() string {
+	return `advertise-client-urls:
+  etcd-bootstrap-main:
+  - https://localhost:2379
+auto-compaction-mode: periodic
+auto-compaction-retention: 30m
+client-transport-security:
+  auto-tls: false
+  cert-file: /var/etcd/ssl/server/tls.crt
+  client-cert-auth: true
+  key-file: /var/etcd/ssl/server/tls.key
+  trusted-ca-file: /var/etcd/ssl/ca/bundle.crt
+data-dir: /var/etcd/data/new.etcd
+enable-v2: false
+initial-advertise-peer-urls:
+  etcd-bootstrap-main:
+  - http://localhost:2380
+initial-cluster: etcd-bootstrap-main=http://localhost:2380
+initial-cluster-state: new
+initial-cluster-token: etcd-cluster
+listen-client-urls: https://0.0.0.0:2379
+listen-peer-urls: http://0.0.0.0:2380
+metrics: extensive
+name: etcd-config
+quota-backend-bytes: 8589934592
+snapshot-count: 10000
+`
 }
 
 func (e *etcdDeployer) labels() map[string]string {
