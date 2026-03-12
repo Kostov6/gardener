@@ -96,7 +96,7 @@ func run(ctx context.Context, opts *Options) error {
 
 	command := fmt.Sprintf("%s=%q /opt/bin/gardenadm init -d %q --log-level=%s", imagevector.OverrideEnv, botanist.ImageVectorOverrideFile, botanist.ManifestsDir, opts.LogLevel)
 	if opts.Recover {
-		command = fmt.Sprintf("%s=%q /opt/bin/gardenadm init -d %q --log-level=%s --secret-file=/secrets.yaml --use-bootstrap-etcd", imagevector.OverrideEnv, botanist.ImageVectorOverrideFile, botanist.ManifestsDir, opts.LogLevel)
+		command = fmt.Sprintf("%s=%q /opt/bin/gardenadm init -d %q --log-level=%s --secret-file=/secrets.yaml --use-bootstrap-etcd --no-mcm", imagevector.OverrideEnv, botanist.ImageVectorOverrideFile, botanist.ManifestsDir, opts.LogLevel)
 	}
 
 	var (

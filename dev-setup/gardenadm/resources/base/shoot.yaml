@@ -33,9 +33,9 @@ spec:
         type: local
         image:
           name: local
-      minimum: 1
+      minimum: 2
       # Setting max > min triggers the deployment of the cluster-autoscaler
-      maximum: 2
+      maximum: 3
   kubernetes:
     # kubeAPIServer:
     #   featureGates:

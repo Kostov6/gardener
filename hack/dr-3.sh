@@ -7,7 +7,7 @@ function copy_data() {
     # Retry copy until tar doesn't warn "file changed as we read it"
     ns=$1
     pod=$2
-    max_attempts=20
+    max_attempts=100
     success=0
     for i in $(seq 1 "$max_attempts"); do
         rm -rf data
@@ -74,7 +74,7 @@ rm -rf machine.yaml
 kubectl get machine -l name=shoot--garden--root-worker-z1 -o yaml > machine.yaml
 sed -i 's/namespace: kube-system/namespace: shoot--garden--root/' machine.yaml
 
-
+kill "$PF_PID" 2>/dev/null || true
 export KUBECONFIG=$PWD/example/gardener-local/kind/multi-zone/kubeconfig
 
 kubectl apply -f machine.yaml
@@ -86,6 +86,33 @@ copy_data gardenadm-unmanaged-infra machine-0
 kubectl -n shoot--garden--root scale deploy/machine-controller-manager --replicas=1
 kubectl delete machine -l name=shoot--garden--root-control-plane-z1 -A
 kubectl -n shoot--garden--root scale deploy/machine-controller-manager --replicas=0
+sleep 20
+
+kubectl get machine -l name=shoot--garden--root-control-plane-z1 -A -o yaml > control-plane-machines.yaml
+sed -i 's/namespace: shoot--garden--root/namespace: kube-system/' control-plane-machines.yaml
+
+kubectl -n gardenadm-unmanaged-infra delete pod machine-0 --force
+sleep 3
+
+kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- mkdir -p /var/lib/etcd-main
+kubectl cp data/ gardenadm-unmanaged-infra/machine-0:/var/lib/etcd-main/data
+kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- gardenadm init -d /gardenadm/resources --bootstrap
+
+
+kubectl -n gardenadm-unmanaged-infra port-forward pod/machine-0 6443:443 >/dev/null 2>&1 &
+PF_PID=$!
+trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
+sleep 1
+kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- cat /etc/kubernetes/admin.conf | sed 's/api.root.garden.local.gardener.cloud/localhost:6443/' > /tmp/shoot--garden--root.conf
+export KUBECONFIG=/tmp/shoot--garden--root.conf
+kubectl apply -f control-plane-machines.yaml
+
+kill "$PF_PID" 2>/dev/null || true
+export KUBECONFIG=$PWD/example/gardener-local/kind/multi-zone/kubeconfig
+
+rm -rf data
+copy_data gardenadm-unmanaged-infra machine-0
+
 
 kubectl -n gardener-extension-provider-local-coredns get configmap coredns-custom -o yaml > dns.yaml
 IP=$(kubectl get pods -A -o wide | grep machine-shoot--garden--root-control-plane  | grep -o -E "10.0.212.\S+")
@@ -94,4 +121,3 @@ kubectl apply -f dns.yaml
 
 
 go run ./cmd/gardenadm bootstrap -d ./dev-setup/gardenadm/resources/generated/managed-infra --recover
-

@@ -122,6 +122,6 @@ kubectl cp secrets.yaml gardenadm-unmanaged-infra/machine-0:/secrets.yaml
 kubectl -n gardenadm-unmanaged-infra exec -it machine-0 --  gardenadm init -d /gardenadm/resources  --secret-file=/secrets.yaml --use-bootstrap-etcd || true
 
 # Remove old data and secrets
-# rm -rf secrets.yaml
-# rm -rf data
-# rm -rf pod.yaml
+rm -rf secrets.yaml
+rm -rf data
+rm -rf pod.yaml
