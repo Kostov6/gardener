@@ -413,7 +413,7 @@ func run(ctx context.Context, opts *Options) error {
 		deployMachineControllerManager = g.Add(flow.Task{
 			Name:         "Deploying machine-controller-manager",
 			Fn:           flow.TaskFn(b.DeployMachineControllerManager).RetryUntilTimeout(time.Second, time.Minute),
-			SkipIf:       !b.Shoot.HasManagedInfrastructure(),
+			SkipIf:       !b.Shoot.HasManagedInfrastructure() || opts.NoMCM,
 			Dependencies: flow.NewTaskIDs(waitUntilWebhookComponentsReady),
 		})
 		deployWorker = g.Add(flow.Task{
