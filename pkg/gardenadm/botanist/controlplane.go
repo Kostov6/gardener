@@ -70,7 +70,7 @@ func (b *GardenadmBotanist) deployETCD(role string) func(context.Context) error 
 		if role == v1beta1constants.ETCDRoleMain {
 			if b.StoreContainer != "" {
 				initialize = &bootstrapetcd.InitializeConfig{
-					EtcdbrctlImage:        "europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl",
+					EtcdbrctlImage:        "europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl:v0.41.1-1485a1b4103bf537aae8d8d7f9c56d136faa9e79",
 					StorageProvider:       "Local",
 					StoreContainer:        b.StoreContainer,
 					StorePrefix:           fmt.Sprintf("kube-system--%s/etcd-main", b.StoreContainer),
