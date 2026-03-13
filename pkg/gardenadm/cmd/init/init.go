@@ -434,6 +434,7 @@ func run(ctx context.Context, opts *Options) error {
 		finalizeGardenerNodeAgentBootstrapping = g.Add(flow.Task{
 			Name:         "Finalizing gardener-node-agent bootstrapping (remove cluster-admin access, activate node-agent authorizer)",
 			Fn:           b.FinalizeGardenerNodeAgentBootstrapping,
+			SkipIf:       opts.NoMCM,
 			Dependencies: flow.NewTaskIDs(waitUntilWorkerReady),
 		})
 		waitUntilGardenerNodeAgentLeaseIsRenewed = g.Add(flow.Task{
