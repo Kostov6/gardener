@@ -498,7 +498,6 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 	if err != nil {
 		return nil, err
 	}
-	b.StoreContainer = opts.StoreContainer
 
 	kubeconfigFileExists, err := b.FS.Exists(botanist.PathKubeconfig)
 	if err != nil {

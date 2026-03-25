@@ -61,9 +61,6 @@ type GardenadmBotanist struct {
 	Components Components
 	Extensions []Extension
 
-	// StoreContainer is the store container identifier for etcd backup/restore.
-	StoreContainer string
-
 	operatingSystemConfigSecret       *corev1.Secret
 	gardenerResourceManagerServiceIPs []string
 	staticPodNameToHash               map[string]string

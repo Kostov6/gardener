@@ -23,9 +23,6 @@ type Options struct {
 	UseBootstrapEtcd bool
 
 	Bootstrap bool
-
-	// StoreContainer is the store container identifier for etcd backup/restore.
-	StoreContainer string
 	// NoMCM skips deployment of machine-controller-manager and any worker-related steps.
 	NoMCM bool
 }
@@ -50,6 +47,5 @@ func (o *Options) addFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.SecretFile, "secret-file", "", "Path to a YAML/JSON file containing one or more Kubernetes Secret objects to apply during bootstrap.")
 	fs.BoolVar(&o.UseBootstrapEtcd, "use-bootstrap-etcd", false, "If set, the control plane continues using the bootstrap etcd instead of transitioning to etcd-druid. This is useful for testing purposes to save time.")
 	fs.BoolVar(&o.Bootstrap, "bootstrap", false, "If set, only bootstap")
-	fs.StringVar(&o.StoreContainer, "store-container", "", "The store container identifier for etcd backup/restore.")
 	fs.BoolVar(&o.NoMCM, "no-mcm", false, "If set, skip deploying machine-controller-manager and worker-related components.")
 }
