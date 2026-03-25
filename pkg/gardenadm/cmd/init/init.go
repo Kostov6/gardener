@@ -299,7 +299,6 @@ func BootstrapControlPlane(ctx context.Context, opts *Options, backupDataPath st
 	if err != nil {
 		return nil, err
 	}
-	b.StoreContainer = opts.StoreContainer
 
 	if opts.Zone != "" {
 		b.Zone = new(opts.Zone)
