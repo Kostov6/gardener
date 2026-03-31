@@ -6,6 +6,7 @@ package init
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,12 @@ import (
 	"k8s.io/utils/ptr"
 
 	v1beta1helper "github.com/gardener/gardener/pkg/api/core/v1beta1/helper"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
+
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	seedsystem "github.com/gardener/gardener/pkg/component/seed/system"
@@ -508,10 +515,63 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 		clientSet kubernetes.Interface
 		g         = flow.NewGraph("bootstrap")
 
+		// If --secret-file is provided, load it as a List and create/update those Secrets in the seed cluster
+		// control-plane namespace so they can later be migrated into the shoot control plane.
+		test = g.Add(flow.Task{
+			Name: "Applying user-provided secrets to seed (create-only)",
+			Fn: func(ctx context.Context) error {
+				if opts.SecretFile == "" {
+					return nil
+				}
+				secrets, err := LoadSecretsFromListFile(opts.SecretFile)
+				if err != nil {
+					return fmt.Errorf("failed loading secrets from %s: %w", opts.SecretFile, err)
+				}
+				created := 0
+				for i := range secrets {
+					sec := secrets[i]
+					if sec.Namespace == "" {
+						sec.Namespace = b.Shoot.ControlPlaneNamespace
+					}
+
+					// Check existence in seed cluster
+					existing := &corev1.Secret{}
+					err := b.SeedClientSet.Client().Get(ctx, crclient.ObjectKey{Name: sec.Name, Namespace: sec.Namespace}, existing)
+					if err == nil {
+						// Exists: skip
+						continue
+					}
+					if !apierrors.IsNotFound(err) {
+						return fmt.Errorf("checking secret %s/%s: %w", sec.Namespace, sec.Name, err)
+					}
+
+					// Create new secret
+					newSec := &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:        sec.Name,
+							Namespace:   sec.Namespace,
+							Labels:      sec.Labels,
+							Annotations: sec.Annotations,
+						},
+						Type:       sec.Type,
+						Data:       sec.Data,
+						StringData: sec.StringData,
+					}
+					if err := b.SeedClientSet.Client().Create(ctx, newSec); err != nil {
+						return fmt.Errorf("creating secret %s/%s: %w", sec.Namespace, sec.Name, err)
+					}
+					created++
+				}
+				b.Logger.Info("Applied managed secrets to seed (create-only)", "created", created)
+				return nil
+			},
+		})
+
 		initializeSecretsManagement = g.Add(flow.Task{
-			Name:   "Initializing secrets management",
-			Fn:     b.InitializeSecretsManagement,
-			SkipIf: kubeconfigFileExists,
+			Name:         "Initializing secrets management",
+			Fn:           b.InitializeSecretsManagement,
+			SkipIf:       kubeconfigFileExists,
+			Dependencies: flow.NewTaskIDs(test),
 		})
 		writeKubeletBootstrapKubeconfig = g.Add(flow.Task{
 			Name:         "Writing kubelet bootstrap kubeconfig with a fake token to disk to make kubelet start",
@@ -556,4 +616,59 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 	}
 
 	return botanist.NewGardenadmBotanistFromManifests(ctx, opts.Log, clientSet, opts.ConfigDir, true)
+}
+
+// LoadSecretsFromListFile reads a YAML/JSON file whose root object is a generic Kubernetes
+// List (kind: "List") and returns items decoded as corev1.Secret that have the label
+// managed-by=secrets-manager. Only items of kind Secret are supported; encountering a
+// non-Secret item results in an error.
+func LoadSecretsFromListFile(path string) ([]corev1.Secret, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading secret list file: %w", err)
+	}
+
+	// Normalize YAML → JSON for generic decoding.
+	jsonBytes, err := yaml.YAMLToJSON(data)
+	if err != nil {
+		return nil, fmt.Errorf("parsing YAML/JSON: %w", err)
+	}
+
+	// Generic List envelope: items are raw JSON documents.
+	type genericList struct {
+		metav1.TypeMeta `json:",inline"`
+		Items           []json.RawMessage `json:"items"`
+	}
+
+	var list genericList
+	if err := json.Unmarshal(jsonBytes, &list); err != nil {
+		return nil, fmt.Errorf("decoding List envelope: %w", err)
+	}
+
+	if list.Kind != "List" {
+		return nil, fmt.Errorf("expected kind=List, got kind=%q", list.Kind)
+	}
+
+	secrets := make([]corev1.Secret, 0, len(list.Items))
+	for i, item := range list.Items {
+		// Peek kind to ensure Secret before full decode
+		var meta metav1.TypeMeta
+		if err := json.Unmarshal(item, &meta); err != nil {
+			return nil, fmt.Errorf("item %d: decoding typemeta: %w", i, err)
+		}
+		if meta.Kind != "Secret" {
+			return nil, fmt.Errorf("item %d: unsupported kind %q (only Secret items are allowed)", i, meta.Kind)
+		}
+
+		var sec corev1.Secret
+		if err := json.Unmarshal(item, &sec); err != nil {
+			return nil, fmt.Errorf("item %d: decoding Secret: %w", i, err)
+		}
+		// Filter: only include secrets labeled as managed-by=secrets-manager
+		if sec.Labels != nil && sec.Labels["managed-by"] == "secrets-manager" {
+			secrets = append(secrets, sec)
+		}
+	}
+
+	return secrets, nil
 }

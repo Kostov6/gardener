@@ -21,6 +21,10 @@ type Options struct {
 	*cmd.Options
 	cmd.ManifestOptions
 
+	// SecretFile optionally points to a YAML/JSON file containing one or more Kubernetes Secret objects
+	// to be applied during bootstrap.
+	SecretFile string
+
 	// UseBootstrapEtcd indicates whether to use the bootstrap etcd instead of transitioning to etcd-druid.
 	UseBootstrapEtcd bool
 	// Zone is the availability zone in which the new node is being initialized.
@@ -87,6 +91,7 @@ func (o *Options) Complete() error {
 
 func (o *Options) addFlags(fs *pflag.FlagSet) {
 	o.ManifestOptions.AddFlags(fs)
+	fs.StringVar(&o.SecretFile, "secret-file", "", "Path to a YAML/JSON file containing one or more Kubernetes Secret objects to apply during bootstrap.")
 	fs.BoolVar(&o.UseBootstrapEtcd, "use-bootstrap-etcd", false, "If set, the control plane continues using the bootstrap etcd instead of transitioning to etcd-druid. This is useful for testing purposes to save time.")
 	fs.StringVarP(&o.Zone, "zone", "z", "", "Availability zone for the new node. Required if the control plane worker pool in the `Shoot` has multiple zones configured. Optional if exactly one zone is configured (applied automatically). Must not be set if no zones are configured.")
 	fs.BoolVar(&o.Bootstrap, "bootstrap", false, "If set, only bootstap")
