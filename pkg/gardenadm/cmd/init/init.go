@@ -322,16 +322,10 @@ func runInit(ctx context.Context, opts *Options) error {
 		})
 		waitUntilGardenerResourceManagerReady = g.Add(flow.Task{
 			Name: "Waiting until gardener-resource-manager reports readiness",
-			Fn: flow.TaskFn(func(ctx context.Context) error {
-				if shootIsGarden {
-					return b.Shoot.Components.ControlPlane.ResourceManager.Wait(ctx)
-				}
-
-				return flow.Parallel(
-					b.Components.RuntimeResourceManager.Wait,
-					b.Shoot.Components.ControlPlane.ResourceManager.Wait,
-				)(ctx)
-			}).RetryUntilTimeout(1*time.Minute, 5*time.Minute),
+			Fn: flow.Parallel(
+				b.Components.RuntimeResourceManager.Wait,
+				b.Shoot.Components.ControlPlane.ResourceManager.Wait,
+			).RetryUntilTimeout(1*time.Minute, 5*time.Minute),
 			Dependencies: flow.NewTaskIDs(deployGardenerResourceManager),
 		})
 		_ = g.Add(flow.Task{
@@ -456,16 +450,10 @@ func runInit(ctx context.Context, opts *Options) error {
 		})
 		waitUntilGardenerResourceManagerInPodNetworkReady = g.Add(flow.Task{
 			Name: "Waiting until gardener-resource-manager (in pod network) reports readiness",
-			Fn: flow.TaskFn(func(ctx context.Context) error {
-				if shootIsGarden {
-					return b.Shoot.Components.ControlPlane.ResourceManager.Wait(ctx)
-				}
-
-				return flow.Parallel(
-					b.Components.RuntimeResourceManager.Wait,
-					b.Shoot.Components.ControlPlane.ResourceManager.Wait,
-				)(ctx)
-			}).RetryUntilTimeout(time.Minute, 15*time.Minute),
+			Fn: flow.Parallel(
+				b.Components.RuntimeResourceManager.Wait,
+				b.Shoot.Components.ControlPlane.ResourceManager.Wait,
+			).RetryUntilTimeout(time.Minute, 15*time.Minute),
 			SkipIf:       podNetworkAvailable,
 			Dependencies: flow.NewTaskIDs(deployGardenerResourceManagerIntoPodNetwork),
 		})
