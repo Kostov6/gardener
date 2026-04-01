@@ -38,6 +38,8 @@ type Options struct {
 
 	// StoreContainer is the store container identifier for etcd backup/restore.
 	StoreContainer string
+	// NoMCM skips deployment of machine-controller-manager and any worker-related steps.
+	NoMCM bool
 }
 
 // ParseArgs parses the arguments to the options.
@@ -99,4 +101,5 @@ func (o *Options) addFlags(fs *pflag.FlagSet) {
 	fs.StringVarP(&o.Zone, "zone", "z", "", "Availability zone for the new node. Required if the control plane worker pool in the `Shoot` has multiple zones configured. Optional if exactly one zone is configured (applied automatically). Must not be set if no zones are configured.")
 	fs.BoolVar(&o.Bootstrap, "bootstrap", false, "If set, only bootstap")
 	fs.StringVar(&o.StoreContainer, "store-container", "", "The store container identifier for etcd backup/restore.")
+	fs.BoolVar(&o.NoMCM, "no-mcm", false, "If set, skip deploying machine-controller-manager and worker-related components.")
 }
