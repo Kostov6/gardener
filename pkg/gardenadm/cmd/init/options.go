@@ -35,6 +35,9 @@ type Options struct {
 	Zone string
 
 	Bootstrap bool
+
+	// StoreContainer is the store container identifier for etcd backup/restore.
+	StoreContainer string
 }
 
 // ParseArgs parses the arguments to the options.
@@ -95,4 +98,5 @@ func (o *Options) addFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&o.UseBootstrapEtcd, "use-bootstrap-etcd", false, "If set, the control plane continues using the bootstrap etcd instead of transitioning to etcd-druid. This is useful for testing purposes to save time.")
 	fs.StringVarP(&o.Zone, "zone", "z", "", "Availability zone for the new node. Required if the control plane worker pool in the `Shoot` has multiple zones configured. Optional if exactly one zone is configured (applied automatically). Must not be set if no zones are configured.")
 	fs.BoolVar(&o.Bootstrap, "bootstrap", false, "If set, only bootstap")
+	fs.StringVar(&o.StoreContainer, "store-container", "", "The store container identifier for etcd backup/restore.")
 }
