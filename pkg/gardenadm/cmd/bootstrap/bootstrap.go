@@ -96,7 +96,7 @@ func run(ctx context.Context, opts *Options) error {
 
 	command := fmt.Sprintf("%s%s init -d %q --log-level=%s", botanist.ImageVectorOverrideEnv(), nodeinit.GardenadmBinaryPath, botanist.ManifestsDir, opts.LogLevel)
 	if opts.Recover {
-		command = command + " --secret-file=/secrets.yaml --use-bootstrap-etcd"
+		command = command + " --secret-file=/secrets.yaml --use-bootstrap-etcd --no-mcm"
 	}
 
 	var (
