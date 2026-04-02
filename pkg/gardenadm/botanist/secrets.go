@@ -38,6 +38,7 @@ func (b *GardenadmBotanist) MigrateSecrets(ctx context.Context, fakeClient, real
 			key := client.ObjectKey{Name: s.Name, Namespace: ns}
 			if err := realClient.Get(ctx, key, existing); err == nil {
 				// Already present: skip create
+				b.Logger.Info("The Secret already exists in the system. It is most likely restored from a ShootState. Won't update it...", "secret", key)
 				return nil
 			} else if !apierrors.IsNotFound(err) {
 				// Unexpected error while checking existence
