@@ -22,7 +22,6 @@ import (
 
 	gardencorev1 "github.com/gardener/gardener/pkg/apis/core/v1"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
-	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	operatorv1alpha1 "github.com/gardener/gardener/pkg/apis/operator/v1alpha1"
 	securityv1alpha1 "github.com/gardener/gardener/pkg/apis/security/v1alpha1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
@@ -36,13 +35,11 @@ func init() {
 	utilruntime.Must((&runtime.SchemeBuilder{
 		kubernetes.AddGardenSchemeToScheme,
 		operatorv1alpha1.AddToScheme,
-		extensionsv1alpha1.AddToScheme,
 	}).AddToScheme(scheme))
 
 	decoder = serializer.NewCodecFactory(scheme).UniversalDecoder(
 		gardencorev1.SchemeGroupVersion,
 		gardencorev1beta1.SchemeGroupVersion,
-		extensionsv1alpha1.SchemeGroupVersion,
 		operatorv1alpha1.SchemeGroupVersion,
 		securityv1alpha1.SchemeGroupVersion,
 		corev1.SchemeGroupVersion,
@@ -157,6 +154,7 @@ func ReadManifests(log logr.Logger, fsys fs.FS) (Resources, error) {
 					return fmt.Errorf("found more than one *gardencorev1beta1.BackupBucket resource, but only one is allowed")
 				}
 				resources.BackupBucket = typedObj
+
 			case *gardencorev1beta1.BackupEntry:
 				if resources.BackupEntry != nil {
 					return fmt.Errorf("found more than one *gardencorev1beta1.BackupEntry resource, but only one is allowed")

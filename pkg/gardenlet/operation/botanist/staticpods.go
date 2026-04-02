@@ -60,7 +60,6 @@ func (b *Botanist) deployETCD(role string, bootstrapEtcdBackupPath string) func(
 			etcdbrctlImage, err := imagevector.Containers().FindImage(imagevector.ContainerImageNameEtcdBackupRestore)
 			if err != nil {
 				return fmt.Errorf("failed fetching image %s: %w", imagevector.ContainerImageNameEtcdBackupRestore, err)
-			}
 
 			etcdBackupRestore, err = backuprestore.ConfigFromBackupDataPath(bootstrapEtcdBackupPath, etcdbrctlImage.String())
 			if err != nil {
