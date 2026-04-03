@@ -35,6 +35,8 @@ type Options struct {
 	Zone string
 
 	Bootstrap bool
+	// Recover indicates whether init should run in recovery mode.
+	Recover bool
 	// NoMCM skips deployment of machine-controller-manager and any worker-related steps.
 	NoMCM bool
 }
@@ -50,7 +52,27 @@ func (o *Options) Validate() error {
 		return err
 	}
 
+	if err := o.validateFlagCombinations(); err != nil {
+		return err
+	}
+
 	return o.validateZone()
+}
+
+func (o *Options) validateFlagCombinations() error {
+	if !o.Recover {
+		return nil
+	}
+
+	if o.Bootstrap {
+		return fmt.Errorf("--recover cannot be combined with --bootstrap")
+	}
+
+	if o.SecretFile != "" {
+		return fmt.Errorf("--recover cannot be combined with --secret-file")
+	}
+
+	return nil
 }
 
 // validateZone validates the zone configuration against the shoot specification.
@@ -97,5 +119,6 @@ func (o *Options) addFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&o.UseBootstrapEtcd, "use-bootstrap-etcd", false, "If set, the control plane continues using the bootstrap etcd instead of transitioning to etcd-druid. This is useful for testing purposes to save time.")
 	fs.StringVarP(&o.Zone, "zone", "z", "", "Availability zone for the new node. Required if the control plane worker pool in the `Shoot` has multiple zones configured. Optional if exactly one zone is configured (applied automatically). Must not be set if no zones are configured.")
 	fs.BoolVar(&o.Bootstrap, "bootstrap", false, "If set, only bootstap")
+	fs.BoolVar(&o.Recover, "recover", false, "If set, run control plane recovery flow.")
 	fs.BoolVar(&o.NoMCM, "no-mcm", false, "If set, skip deploying machine-controller-manager and worker-related components.")
 }
