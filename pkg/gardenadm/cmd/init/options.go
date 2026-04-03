@@ -55,7 +55,27 @@ func (o *Options) Validate() error {
 		return err
 	}
 
+	if err := o.validateFlagCombinations(); err != nil {
+		return err
+	}
+
 	return o.validateZone()
+}
+
+func (o *Options) validateFlagCombinations() error {
+	if !o.Recover {
+		return nil
+	}
+
+	if o.Bootstrap {
+		return fmt.Errorf("--recover cannot be combined with --bootstrap")
+	}
+
+	if o.SecretFile != "" {
+		return fmt.Errorf("--recover cannot be combined with --secret-file")
+	}
+
+	return nil
 }
 
 // validateZone validates the zone configuration against the shoot specification.
