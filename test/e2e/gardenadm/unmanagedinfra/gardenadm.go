@@ -46,6 +46,25 @@ var _ = Describe("gardenadm unmanaged infrastructure scenario tests", Label("gar
 		controlPlaneNamespace = "kube-system"
 	)
 
+	BeforeEach(OncePerOrdered, func(ctx SpecContext) {
+		testRunID := utils.ComputeSHA256Hex([]byte(uuid.NewUUID()))[:8]
+
+		By("Ensuring fresh machine pods for test execution")
+		statefulSet := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: statefulSetName, Namespace: namespace}}
+		Expect(RuntimeClient.Client().Get(ctx, client.ObjectKeyFromObject(statefulSet), statefulSet)).To(Succeed())
+
+		patch := client.MergeFrom(statefulSet.DeepCopy())
+		metav1.SetMetaDataAnnotation(&statefulSet.Spec.Template.ObjectMeta, "test-run-id", testRunID)
+		Expect(RuntimeClient.Client().Patch(ctx, statefulSet, patch)).To(Succeed())
+
+		Eventually(ctx, func(g Gomega) {
+			g.Expect(RuntimeClient.Client().Get(ctx, client.ObjectKeyFromObject(statefulSet), statefulSet)).To(Succeed())
+			progressing, _ := health.IsStatefulSetProgressing(statefulSet)
+			g.Expect(progressing).To(BeFalse())
+			g.Expect(health.CheckStatefulSet(statefulSet)).To(Succeed())
+		}).Should(Succeed())
+	}, NodeTimeout(2*time.Minute))
+
 	Describe("Single-node control plane", Ordered, Label("single"), func() {
 		var (
 			shootClientSet kubernetes.Interface
