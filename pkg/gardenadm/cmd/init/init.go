@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -106,20 +105,6 @@ func runRecover(ctx context.Context, opts *Options) error {
 
 func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanist) error {
 	b.Logger.Info("Preparing second recovery phase cleanup")
-
-	csrList := &certificatesv1.CertificateSigningRequestList{}
-	if err := b.SeedClientSet.Client().List(ctx, csrList); err != nil {
-		return fmt.Errorf("failed listing certificate signing requests: %w", err)
-	}
-	for _, csr := range csrList.Items {
-		if csr.Spec.SignerName != "kubernetes.io/kube-apiserver-client" {
-			continue
-		}
-		b.Logger.Info("Deleting CSR", "name", csr.Name)
-		if err := b.SeedClientSet.Client().Delete(ctx, &csr); crclient.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed deleting certificate signing request %q: %w", csr.Name, err)
-		}
-	}
 
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: b.HostName}}
 	b.Logger.Info("Deleting node", "name", b.HostName)
