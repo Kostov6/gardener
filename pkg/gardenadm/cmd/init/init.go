@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	appsv1 "k8s.io/api/apps/v1"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,7 +20,6 @@ import (
 
 	v1beta1helper "github.com/gardener/gardener/pkg/api/core/v1beta1/helper"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
-	resourcesv1alpha1 "github.com/gardener/gardener/pkg/apis/resources/v1alpha1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	seedsystem "github.com/gardener/gardener/pkg/component/seed/system"
 	gardenerextensions "github.com/gardener/gardener/pkg/extensions"
@@ -30,7 +28,6 @@ import (
 	"github.com/gardener/gardener/pkg/utils/flow"
 	gardenerutils "github.com/gardener/gardener/pkg/utils/gardener"
 	gardenletutils "github.com/gardener/gardener/pkg/utils/gardener/gardenlet"
-	kubernetesutils "github.com/gardener/gardener/pkg/utils/kubernetes"
 )
 
 // NewCommand creates a new cobra.Command.
@@ -124,75 +121,10 @@ func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanis
 		}
 	}
 
-	managedResourceList := &resourcesv1alpha1.ManagedResourceList{}
-	if err := b.SeedClientSet.Client().List(ctx, managedResourceList); err != nil {
-		return fmt.Errorf("failed listing managedresources: %w", err)
-	}
-	for _, mr := range managedResourceList.Items {
-		obj := mr.DeepCopy()
-		obj.SetFinalizers(nil)
-		b.Logger.Info("Updating ManagedResource before deletion", "namespace", obj.Namespace, "name", obj.Name)
-		if err := b.SeedClientSet.Client().Update(ctx, obj); crclient.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed updating managedresource %s/%s: %w", obj.Namespace, obj.Name, err)
-		}
-		b.Logger.Info("Deleting ManagedResource", "namespace", obj.Namespace, "name", obj.Name)
-		if err := b.SeedClientSet.Client().Delete(ctx, obj); crclient.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed deleting managedresource %s/%s: %w", obj.Namespace, obj.Name, err)
-		}
-	}
-
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 1*time.Minute)
-	defer cancel()
-
-	b.Logger.Info("Waiting for ManagedResources clean up")
-	if err := kubernetesutils.WaitUntilResourcesDeleted(ctxWithTimeout, b.SeedClientSet.Client(), managedResourceList, 10*time.Second); err != nil {
-		return fmt.Errorf("failed to wait until managedresources deletion: %w", err)
-	}
-
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: b.HostName}}
 	b.Logger.Info("Deleting node", "name", b.HostName)
 	if err := b.SeedClientSet.Client().Delete(ctx, node); crclient.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("failed deleting node %q: %w", b.HostName, err)
-	}
-
-	podList := &corev1.PodList{}
-	if err := b.SeedClientSet.Client().List(ctx, podList); err != nil {
-		return fmt.Errorf("failed listing pods: %w", err)
-	}
-	for _, pod := range podList.Items {
-		if pod.Spec.NodeName != b.HostName {
-			continue
-		}
-		b.Logger.Info("Force deleting pod on recovery node", "namespace", pod.Namespace, "name", pod.Name, "node", pod.Spec.NodeName)
-		deletePolicy := metav1.DeletePropagationBackground
-		if err := b.SeedClientSet.Client().Delete(ctx, pod.DeepCopy(), &crclient.DeleteOptions{GracePeriodSeconds: ptr.To[int64](0), PropagationPolicy: &deletePolicy}); crclient.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed force deleting pod %s/%s: %w", pod.Namespace, pod.Name, err)
-		}
-	}
-
-	grmDeployments := &appsv1.DeploymentList{}
-	if err := b.SeedClientSet.Client().List(ctx, grmDeployments, crclient.MatchingLabels{v1beta1constants.LabelApp: "gardener-resource-manager"}); err != nil {
-		return fmt.Errorf("failed listing gardener-resource-manager deployments: %w", err)
-	}
-	for _, deployment := range grmDeployments.Items {
-		b.Logger.Info("Deleting gardener-resource-manager deployment", "namespace", deployment.Namespace, "name", deployment.Name)
-		if err := b.SeedClientSet.Client().Delete(ctx, deployment.DeepCopy()); crclient.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed deleting deployment %s/%s: %w", deployment.Namespace, deployment.Name, err)
-		}
-	}
-
-	mcmDeploymentList := &appsv1.DeploymentList{}
-	if err := b.SeedClientSet.Client().List(ctx, mcmDeploymentList); err != nil {
-		return fmt.Errorf("failed listing deployments for machine-controller-manager cleanup: %w", err)
-	}
-	for _, deployment := range mcmDeploymentList.Items {
-		if deployment.Name != "machine-controller-manager" {
-			continue
-		}
-		b.Logger.Info("Deleting machine-controller-manager deployment", "namespace", deployment.Namespace, "name", deployment.Name)
-		if err := b.SeedClientSet.Client().Delete(ctx, deployment.DeepCopy()); crclient.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed deleting deployment %s/%s: %w", deployment.Namespace, deployment.Name, err)
-		}
 	}
 
 	b.Logger.Info("Finished second recovery phase cleanup")
