@@ -141,11 +141,11 @@ func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanis
 		}
 	}
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
 
 	b.Logger.Info("Waiting for ManagedResources clean up")
-	if err := kubernetesutils.WaitUntilResourcesDeleted(ctxWithTimeout, b.SeedClientSet.Client(), managedResourceList, 30*time.Second); err != nil {
+	if err := kubernetesutils.WaitUntilResourcesDeleted(ctxWithTimeout, b.SeedClientSet.Client(), managedResourceList, 10*time.Second); err != nil {
 		return fmt.Errorf("failed to wait until managedresources deletion: %w", err)
 	}
 
