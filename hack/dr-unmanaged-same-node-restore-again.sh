@@ -2,11 +2,8 @@
 
 set -euo pipefail
 
-# make gardenadm-up
-
-DATE=$(date '+%Y-%m-%dT%H:%M:%S%z' | sed 's/\([0-9][0-9]\)$$/:\1/g')
-LD_FLAGS=$(hack/get-build-ld-flags.sh k8s.io/component-base  VERSION  Gardener $DATE) GOOS=linux GOARCH=arm64 make -B gardenadm
-kubectl cp bin/gardenadm gardenadm-unmanaged-infra/machine-0:/gardenadm/gardenadm
+# Update the gardenadm binary and its image vector overwrite
+make gardenadm-up
 
 # Nuke machine but retain IP address
 machine_pod=$(docker exec -it gardener-operator-local-control-plane crictl pods | grep machine-0 | cut -d ' ' -f 1)
