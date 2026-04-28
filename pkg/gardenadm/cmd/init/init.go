@@ -129,8 +129,7 @@ func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanis
 	}
 	for _, mr := range managedResourceList.Items {
 		obj := mr.DeepCopy()
-		obj.Finalizers = deleteFinalizer(obj.Finalizers, "resources.gardener.cloud/gardener-resource-manager")
-		obj.Finalizers = deleteFinalizer(obj.Finalizers, "resources.gardener.cloud/gardener-resource-manager-seed")
+		obj.SetFinalizers(nil)
 		b.Logger.Info("Updating ManagedResource before deletion", "namespace", obj.Namespace, "name", obj.Name)
 		if err := b.SeedClientSet.Client().Update(ctx, obj); crclient.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("failed updating managedresource %s/%s: %w", obj.Namespace, obj.Name, err)
