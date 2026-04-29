@@ -20,6 +20,7 @@ import (
 	"github.com/gardener/gardener/pkg/gardenlet/operation/botanist"
 	"github.com/gardener/gardener/pkg/utils/flow"
 	gardenletutils "github.com/gardener/gardener/pkg/utils/gardener/gardenlet"
+	kubernetesutils "github.com/gardener/gardener/pkg/utils/kubernetes"
 )
 
 // NewCommand creates a new cobra.Command.
