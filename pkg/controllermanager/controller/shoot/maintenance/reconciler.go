@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 
 	v1beta1helper "github.com/gardener/gardener/pkg/api/core/v1beta1/helper"
 	controllermanagerconfigv1alpha1 "github.com/gardener/gardener/pkg/apis/config/controllermanager/v1alpha1"
@@ -108,6 +109,24 @@ func (r *Reconciler) reconcile(ctx context.Context, log logr.Logger, shoot *gard
 		operations []string
 		err        error
 	)
+
+	// If a ConfigMap named "shoot-<name>-scheduled-update" exists in the shoot's namespace,
+	// use its "shoot" key (YAML-encoded Shoot spec) as the base for maintenance instead of the live shoot.
+	scheduledUpdateCMName := "shoot-" + shoot.Name + "-scheduled-update"
+	scheduledUpdateCM := &corev1.ConfigMap{}
+	if cmErr := r.Client.Get(ctx, client.ObjectKey{Namespace: shoot.Namespace, Name: scheduledUpdateCMName}, scheduledUpdateCM); cmErr == nil {
+		if rawShoot, ok := scheduledUpdateCM.Data["shoot"]; ok {
+			scheduled := shoot.DeepCopy()
+			if jsonErr := yaml.Unmarshal([]byte(rawShoot), &scheduled.Spec); jsonErr == nil {
+				maintainedShoot = scheduled
+				log.Info("Using scheduled-update ConfigMap as base for maintenance", "configmap", scheduledUpdateCMName)
+			} else {
+				log.Error(jsonErr, "Failed to unmarshal shoot from scheduled-update ConfigMap, falling back to live shoot", "configmap", scheduledUpdateCMName)
+			}
+		}
+	} else if !apierrors.IsNotFound(cmErr) {
+		return fmt.Errorf("failed to get scheduled-update ConfigMap %q: %w", scheduledUpdateCMName, cmErr)
+	}
 
 	workerToKubernetesUpdate := make(map[string]updateResult)
 	workerToMachineImageUpdate := make(map[string]updateResult)

@@ -1,0 +1,41 @@
+# Example ConfigMap for scheduled shoot updates during maintenance.
+# The maintenance controller reads the "shoot" key and unmarshals it
+# directly into the Shoot's Spec, allowing pre-staged spec changes
+# to be applied atomically in the next maintenance window.
+# NOTE: Only spec fields should be included here (no apiVersion/kind/metadata/spec wrapper).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shoot-local-scheduled-update
+  namespace: garden-local
+data:
+  shoot: |
+    cloudProfile:
+      name: local
+    credentialsBindingName: local
+    region: local
+    networking:
+      type: calico
+      nodes: 10.0.0.0/16
+    provider:
+      type: local
+      workers:
+      - name: local
+        machine:
+          type: local
+        cri:
+          name: containerd
+        minimum: 2
+        maximum: 20
+        maxSurge: 1
+        maxUnavailable: 0
+    kubernetes:
+      kubelet:
+        seccompDefault: true
+        serializeImagePulls: false
+        registryPullQPS: 10
+        registryBurst: 20
+        protectKernelDefaults: true
+        streamingConnectionIdleTimeout: 5m
+    maintenance:
+      confineSpecUpdateRollout: true

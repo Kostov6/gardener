@@ -15,6 +15,7 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apiserver/pkg/admission"
+	"k8s.io/klog/v2"
 
 	"github.com/gardener/gardener/pkg/apis/core"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
@@ -77,6 +78,17 @@ func (s *StagedSpec) Validate(ctx context.Context, a admission.Attributes, _ adm
 		return nil
 	}
 
+	if isMaintenanceController(a) {
+		return nil
+	}
+
+	userInfo := a.GetUserInfo()
+	klog.InfoS("StagedSpec admission: blocking spec update",
+		"shoot", klog.KRef(a.GetNamespace(), a.GetName()),
+		"user", userInfo.GetName(),
+		"groups", userInfo.GetGroups(),
+	)
+
 	return admission.NewForbidden(a, fmt.Errorf(
 		"spec changes are not allowed when confineSpecUpdateRollout is enabled; "+
 			"write your desired spec into ConfigMap 'shoot-%s-staged-spec' in namespace %q",
@@ -88,6 +100,16 @@ func isConfineSpecUpdateRolloutEnabled(shoot *core.Shoot) bool {
 	return shoot.Spec.Maintenance != nil &&
 		shoot.Spec.Maintenance.ConfineSpecUpdateRollout != nil &&
 		*shoot.Spec.Maintenance.ConfineSpecUpdateRollout
+}
+
+const maintenanceControllerServiceAccount = "system:serviceaccount:garden:gardener-controller-manager"
+
+func isMaintenanceController(a admission.Attributes) bool {
+	userInfo := a.GetUserInfo()
+	if userInfo == nil {
+		return false
+	}
+	return userInfo.GetName() == maintenanceControllerServiceAccount
 }
 
 func isGardenlet(a admission.Attributes) bool {
