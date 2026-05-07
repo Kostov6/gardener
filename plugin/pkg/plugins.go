@@ -69,6 +69,8 @@ const (
 	PluginNameShootVPAEnabledByDefault = "ShootVPAEnabledByDefault"
 	// PluginNameShootResourceReservation is the name of the ShootResourceReservation admission plugin.
 	PluginNameShootResourceReservation = "ShootResourceReservation"
+	// PluginNameShootStagedSpec is the name of the ShootStagedSpec admission plugin.
+	PluginNameShootStagedSpec = "ShootStagedSpec"
 	// PluginNameBackupBucketValidator is the name of the BackupBucketValidator admission plugin.
 	PluginNameBackupBucketValidator = "BackupBucketValidator"
 )
@@ -88,6 +90,7 @@ func AllOrderedPluginNames() []string {
 		PluginNameShootDNSRewriting,                 // ShootDNSRewriting
 		PluginNameShootQuotaValidator,               // ShootQuotaValidator
 		PluginNameShootMutator,                      // ShootMutator
+		PluginNameShootStagedSpec,                   // ShootStagedSpec
 		PluginNameShootValidator,                    // ShootValidator
 		PluginNameSeedValidator,                     // SeedValidator
 		PluginNameSeedMutator,                       // SeedMutator
@@ -134,6 +137,7 @@ func DefaultOnPlugins() sets.Set[string] {
 		PluginNameShootResourceReservation,        // ShootResourceReservation
 		PluginNameShootQuotaValidator,             // ShootQuotaValidator
 		PluginNameShootMutator,                    // ShootMutator
+		PluginNameShootStagedSpec,                  // ShootStagedSpec
 		PluginNameShootValidator,                  // ShootValidator
 		PluginNameShootVPAEnabledByDefault,        // ShootVPAEnabledByDefault
 		PluginNameSeedValidator,                   // SeedValidator
