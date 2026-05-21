@@ -2,10 +2,6 @@
 
 set -e
 
-function targetKind() {
-    export KUBECONFIG="$PWD/dev-setup/kubeconfigs/runtime/kubeconfig"
-}
-
 function targetMachine() {
     KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER="$PWD/dev-setup/kubeconfigs/self-hosted-shoot/kubeconfig"
     ./hack/usage/generate-kubeconfig.sh self-hosted-shoot --docker gind-machine-0 > "$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
