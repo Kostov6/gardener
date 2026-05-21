@@ -114,10 +114,6 @@ docker exec -ti gind-machine-0 gardenadm discover /shoot.yaml --kubeconfig /virt
 docker exec -ti gind-machine-0 sh -c 'find . -maxdepth 1 -type f | grep backup | xargs -I {} mv {} /gardenadm/resources/'
 docker exec -ti gind-machine-0 sh -c 'find . -maxdepth 1 -type f | grep shootstate | xargs -I {} mv {} /gardenadm/resources/'
 
-# TODO: Replace the hard-coded wait by triggering etcd snapshot programatically.
-echo "> Sleeping 100s to allow an etcd snapshot to be created..."
-sleep 100
-
 echo "> Restoring the control plane Node..."
 # TODO: Check why GRM gets deployed to worker Nodes
 docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/resources --recover --use-bootstrap-etcd
