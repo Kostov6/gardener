@@ -31,19 +31,20 @@ make kind-up
 make gardenadm-up SCENARIO=connect-kind
 
 echo "> Sanity checking that gardener-apiserver is running..."
-kubectl --kubeconfig ./dev-setup/kubeconfigs/virtual-garden/kubeconfig get namespaces
+VIRTUAL_GARDEN_KUBECONFIG="./dev-setup/kubeconfigs/virtual-garden/kubeconfig"
+kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" get namespaces
 
 echo "> Building gardenadm binary..."
 make -B gardenadm
 
 echo "> Connecting the Shoot cluster to Gardener..."
-CONNECT_COMMAND=$(KUBECONFIG=./dev-setup/kubeconfigs/virtual-garden/kubeconfig ./bin/gardenadm token create --print-connect-command --shoot-namespace=garden --shoot-name=root | tr -d '"')
+CONNECT_COMMAND=$(KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" ./bin/gardenadm token create --print-connect-command --shoot-namespace=garden --shoot-name=root | tr -d '"')
 docker exec -ti gind-machine-0 $(echo $CONNECT_COMMAND)
 
 echo "> Obtaining a ShootState resource for the Shoot..."
 # Patching the Shoot status with a successful last operation is required to allow the shootstate-controller to create a ShootState for the Shoot
 echo "> Patching the Shoot status with a successful create lastOperation..."
-kubectl --kubeconfig ./dev-setup/kubeconfigs/virtual-garden/kubeconfig -n garden patch shoot root --subresource status --type=merge --patch='{"status":{"lastOperation":{"type": "Create","state": "Succeeded"}}}'
+kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden patch shoot root --subresource status --type=merge --patch='{"status":{"lastOperation":{"type": "Create","state": "Succeeded"}}}'
 
 # Rolling out the gardenlet Deployment is required to trigger the shootstate-controller to create a ShootState for the Shoot
 echo "> Rolling out the kube-system/gardenlet Deployment to trigger ShootState creation..."
@@ -53,7 +54,7 @@ echo "> Waiting until the kube-system/gardenlet Deployment successfully rolled o
 kubectl -n kube-system rollout status deployment/gardenlet
 echo "> Waiting until the ShootState is created..."
 for i in {1..6}; do
-  if kubectl --kubeconfig ./dev-setup/kubeconfigs/virtual-garden/kubeconfig -n garden get shootstate root &> /dev/null; then
+  if kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get shootstate root &> /dev/null; then
     break
   fi
   echo "> Attempt $i/6: Waiting until garden/root ShootState is created. Sleeping 10s..."
