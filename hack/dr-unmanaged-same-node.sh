@@ -3,9 +3,9 @@
 set -e
 
 function targetMachine() {
-    KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER="$PWD/dev-setup/kubeconfigs/self-hosted-shoot/kubeconfig"
-    ./hack/usage/generate-kubeconfig.sh self-hosted-shoot --docker gind-machine-0 > "$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
-    export KUBECONFIG="$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
+  KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER="$PWD/dev-setup/kubeconfigs/self-hosted-shoot/kubeconfig"
+  ./hack/usage/generate-kubeconfig.sh self-hosted-shoot --docker gind-machine-0 > "$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
+  export KUBECONFIG="$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
 }
 
 echo "> Setting up gind (machine containers only)..."
@@ -61,8 +61,41 @@ for i in {1..6}; do
   sleep 10
 done
 
-sleep 15
+echo "> Triggering a delta etcd snapshot before simulating the disaster..."
+# Trigger an etcd snapshot to flush the latest cluster state to the backup store.
+# etcd-backup-restore takes deltas on a schedule (every 5min by default), so without an
+# explicit trigger the bucket may not yet contain recent state (e.g. the gardenlet
+# Deployment created after `gardenadm connect`).
+# Trigger a delta (not a full) so the recovery path exercises full+delta replay, matching a real disaster.
+# /snapshot/delta blocks until the delta is uploaded.
 
+targetMachine
+ETCD_MAIN_POD=$(kubectl -n kube-system get pod -l app.kubernetes.io/name=etcd-main \
+  -o jsonpath='{.items[0].metadata.name}')
+if [ -z "${ETCD_MAIN_POD}" ]; then
+  echo "ERROR: could not find etcd-main pod in kube-system" >&2
+  exit 1
+fi
+
+kubectl -n kube-system port-forward "pod/${ETCD_MAIN_POD}" 8080:8080 >/dev/null &
+PF_PID=$!
+trap "kill ${PF_PID} 2>/dev/null || true" EXIT
+
+echo "> Waiting for the port-forward to become ready..."
+for i in {1..15}; do
+  if curl -sk -o /dev/null "https://localhost:8080/healthz"; then
+    break
+  fi
+  sleep 1
+done
+
+echo "> Sending HTTP request for a delta snapshot..."
+curl -sk --fail "https://localhost:8080/snapshot/delta"
+
+kill ${PF_PID} 2>/dev/null || true
+trap - EXIT
+
+echo
 echo "> Simulating a disaster event..."
 echo "> Stopping the gind-machine-0 container..."
 docker stop gind-machine-0
