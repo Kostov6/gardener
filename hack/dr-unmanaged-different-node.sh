@@ -2,135 +2,93 @@
 
 set -e
 
-# Remove old data and secrets
-rm -rf secrets.yaml
-rm -rf data
-rm -rf pod.yaml
-
-PF_PID=""
-
 function targetKind() {
-    export KUBECONFIG="${KIND_KUBECONFIG:-"$PWD/example/gardener-local/kind/multi-zone/kubeconfig"}"
+    export KUBECONFIG="$PWD/dev-setup/kubeconfigs/runtime/kubeconfig"
 }
 
 function targetMachine() {
-    local machine="${1:-}"
-    if [ -z "$machine" ]; then
-        echo "targetMachine: machine is required" >&2
-        return 1
-    fi
-
-    if [ "$machine" = "stop" ]; then
-        if [ -n "${PF_PID:-}" ]; then
-            kill "$PF_PID" 2>/dev/null || true
-            PF_PID=""
-        fi
-        return 0
-    fi
-
-    if [ -n "${PF_PID:-}" ]; then
-        kill "$PF_PID" 2>/dev/null || true
-        PF_PID=""
-    fi
-
-    kubectl -n gardenadm-unmanaged-infra port-forward "pod/${machine}" 6443:443 >/dev/null 2>&1 &
-    PF_PID=$!
-    trap 'targetMachine stop' EXIT
-    sleep 1
-    kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- cat /etc/kubernetes/admin.conf | sed 's/api.root.garden.external.local.gardener.cloud/localhost:6443/' > /tmp/shoot--garden--root.conf
-    export KUBECONFIG=/tmp/shoot--garden--root.conf
+    KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER="$PWD/dev-setup/kubeconfigs/self-hosted-shoot/kubeconfig"
+    ./hack/usage/generate-kubeconfig.sh self-hosted-shoot --docker gind-machine-0 > "$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
+    export KUBECONFIG="$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
 }
 
-function copy_data() {
-    # Retry copy until tar doesn't warn "file changed as we read it"
-    max_attempts=20
-    success=0
-    for i in $(seq 1 "$max_attempts"); do
-        rm -rf data
-        output=$(kubectl cp gardenadm-unmanaged-infra/machine-3:/var/lib/etcd-main/data data 2>&1 || true)
-        echo "$output"
-        if echo "$output" | grep -qi 'file changed as we read it'; then
-            echo "Attempt $i/$max_attempts: tar reported 'file changed as we read it', retrying..."
-            sleep 2
-            continue
-        fi
-        success=1
-        break
-    done
-    if [ "$success" -ne 1 ]; then
-        echo "Failed to copy data after $max_attempts attempts due to 'file changed as we read it' error."
-        exit 1
-    fi
-}
+echo "> Setting up gind (machine containers only)..."
+make gind-up SCENARIO=machines
 
-# Setup kind and gardenadm
-make kind-single-node-up
+echo "> Initializing control plane Node..."
+# TODO: Can we use the "--use-bootstrap-etcd" flag?
+docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/resources
+
+echo "> Joining gind-machine-1 worker Node..."
+JOIN_COMMAND_1=$(docker exec -ti gind-machine-0 gardenadm token create --print-join-command | tr -d '"')
+docker exec -ti gind-machine-1 $(echo $JOIN_COMMAND_1)
+echo "> Joining gind-machine-2 worker Node..."
+JOIN_COMMAND_2=$(docker exec -ti gind-machine-0 gardenadm token create --print-join-command | tr -d '"')
+docker exec -ti gind-machine-2 $(echo $JOIN_COMMAND_2)
+
+echo "> Creating dummy workload..."
+targetMachine
+./hack/create-workload.sh
+
+echo "> Setting up Gardener control plane in the kind cluster..."
+make kind-up
+make gardenadm-up SCENARIO=connect-kind
+
+echo "> Ensuring GRM is scheduled on the kind's control plane Node..."
 targetKind
-make gardenadm-up
+# This is related to a workaround in the PoC branch.
+kubectl label node gardener-local-control-plane worker.gardener.cloud/pool=control-plane
 
-# Route KAPI traffic to machine-3 
-kubectl -n gardenadm-unmanaged-infra patch svc machine-0 --type='json' -p='[{"op":"replace","path":"/spec/selector/apps.kubernetes.io~1pod-index","value":"3"}]'
+echo "> Sanity checking that gardener-apiserver is running..."
+kubectl --kubeconfig ./dev-setup/kubeconfigs/virtual-garden/kubeconfig get namespaces
 
-# 1 control-plane node and 2 worker nodes setup
-kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm init -d /gardenadm/resources
-JOIN_COMMAND_1=$(kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm token create --print-join-command | tr -d '"')
-kubectl -n gardenadm-unmanaged-infra exec -it machine-1 -- $JOIN_COMMAND_1
-JOIN_COMMAND_2=$(kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm token create --print-join-command | tr -d '"')
-kubectl -n gardenadm-unmanaged-infra exec -it machine-2 -- $JOIN_COMMAND_2
+echo "> Building gardenadm binary..."
+make -B gardenadm
 
-# Creating dummy workload
-targetMachine machine-3
-./hack/creating-workload.sh
+echo "> Connecting the Shoot cluster to Gardener..."
+CONNECT_COMMAND=$(KUBECONFIG=./dev-setup/kubeconfigs/virtual-garden/kubeconfig ./bin/gardenadm token create --print-connect-command --shoot-namespace=garden --shoot-name=root | tr -d '"')
+docker exec -ti gind-machine-0 $(echo $CONNECT_COMMAND)
 
-# Extract backup resources for bootstrap etcd restore and keep them locally.
-backupbucket_name=$(kubectl get backupbuckets.extensions.gardener.cloud -o jsonpath='{.items[0].metadata.name}')
-backupentry_name=$(kubectl get backupentries.extensions.gardener.cloud -o jsonpath='{.items[0].metadata.name}')
-kubectl get backupbuckets.extensions.gardener.cloud "${backupbucket_name}" -o yaml > dr-unmanaged-backupbucket.yaml
-kubectl get backupentries.extensions.gardener.cloud "${backupentry_name}" -o yaml > dr-unmanaged-backupentry.yaml
+echo "> Obtaining a ShootState resource for the Shoot..."
+# Patching the Shoot status with a successful last operation is required to allow the shootstate-controller to create a ShootState for the Shoot
+echo "> Patching the Shoot status with a successful create lastOperation..."
+kubectl --kubeconfig ./dev-setup/kubeconfigs/virtual-garden/kubeconfig -n garden patch shoot root --subresource status --type=merge --patch='{"status":{"lastOperation":{"type": "Create","state": "Succeeded"}}}'
 
-# Wait for etcd snapshot to contain the workload data
-echo "Waiting for 6 minutes before copying data to have a backup with more data in it..."
-sleep 360
+# Rolling out the gardenlet Deployment is required to trigger the shootstate-controller to create a ShootState for the Shoot
+echo "> Rolling out the kube-system/gardenlet Deployment to trigger ShootState creation..."
+targetMachine
+kubectl -n kube-system rollout restart deployment/gardenlet
+echo "> Waiting until the kube-system/gardenlet Deployment successfully rolled out..."
+kubectl -n kube-system rollout status deployment/gardenlet
+echo "> Waiting until the ShootState is created..."
+for i in {1..6}; do
+  if kubectl --kubeconfig ./dev-setup/kubeconfigs/virtual-garden/kubeconfig -n garden get shootstate root &> /dev/null; then
+    break
+  fi
+  echo "> Attempt $i/6: Waiting until garden/root ShootState is created. Sleeping 10s..."
+  sleep 10
+done
 
-# Switch to kind
-targetMachine stop
-targetKind
+sleep 15
 
-# Nuke machine
-kubectl -n gardenadm-unmanaged-infra delete pod machine-3 --force
-sleep 3
+echo "> Simulating a disaster event..."
+echo "> Stopping the gind-machine-0 container..."
+docker stop gind-machine-0
+echo "> Deleting the gind-machine-0 container with its volumes..."
+docker rm --volumes gind-machine-0
 
-# First phase of recovery
-kubectl cp dr-unmanaged-backupbucket.yaml gardenadm-unmanaged-infra/machine-3:/gardenadm/resources/backupbucket.yaml
-kubectl cp dr-unmanaged-backupentry.yaml gardenadm-unmanaged-infra/machine-3:/gardenadm/resources/backupentry.yaml
-kubectl -n gardenadm-unmanaged-infra exec -it machine-3 -- gardenadm init -d /gardenadm/resources --bootstrap
-targetMachine machine-3
-./hack/prep-cluster-2.sh machine-3
+echo "> Updating envoy.yaml to route apiserver traffic to gind-machine-3..."
+sed -i 's/address: gind-machine-[0-9]*/address: gind-machine-3/g' dev-setup/gind/envoy.yaml
+docker restart gind-apiserver-lb
 
-# Switch to kind
-targetMachine stop
-targetKind
+echo "> Copying Shoot manifest and virtual garden kubeconfig to the gind-machine-3 container..."
+docker cp ./dev-setup/kubeconfigs/virtual-garden/kubeconfig gind-machine-3:/virtual-garden-kubeconfig
+docker cp ./dev-setup/gardenadm/resources/base/shoot.yaml gind-machine-3:/shoot.yaml
 
-# Transfer data
-copy_data
+echo "> Downloading Gardener configuration resources for the Shoot..."
+docker exec -ti gind-machine-3 gardenadm discover /shoot.yaml --kubeconfig /virtual-garden-kubeconfig
+docker exec -ti gind-machine-3 sh -c 'find . -maxdepth 1 -type f | grep backup | xargs -I {} mv {} /gardenadm/resources/'
+docker exec -ti gind-machine-3 sh -c 'find . -maxdepth 1 -type f | grep shootstate | xargs -I {} mv {} /gardenadm/resources/'
 
-# Cleanup gardenadm os artefacts
-kubectl -n gardenadm-unmanaged-infra delete pod machine-3 --force
-
-# Route KAPI traffic to machine-0
-kubectl -n gardenadm-unmanaged-infra patch svc machine-0 --type='json' -p='[{"op":"replace","path":"/spec/selector/apps.kubernetes.io~1pod-index","value":"0"}]'
-
-# Move data to machine-0
-kubectl -n gardenadm-unmanaged-infra exec -it machine-0 -- mkdir -p /var/lib/etcd-main
-kubectl cp data/ gardenadm-unmanaged-infra/machine-0:/var/lib/etcd-main/data
-kubectl cp secrets.yaml gardenadm-unmanaged-infra/machine-0:/secrets.yaml
-
-# Second phase of recovery
-kubectl -n gardenadm-unmanaged-infra exec -it machine-0 --  gardenadm init -d /gardenadm/resources  --secret-file=/secrets.yaml --use-bootstrap-etcd || true
-
-# Remove old data and secrets
-rm -rf secrets.yaml
-rm -rf data
-rm -rf pod.yaml
-rm -f dr-unmanaged-backupbucket.yaml
-rm -f dr-unmanaged-backupentry.yaml
+echo "> Restoring the control plane Node..."
+docker exec -ti gind-machine-3 gardenadm init -d /gardenadm/resources --recover --use-bootstrap-etcd --prior-node-name=gind-machine-0
