@@ -90,5 +90,11 @@ docker exec -ti gind-machine-3 gardenadm discover /shoot.yaml --kubeconfig /virt
 docker exec -ti gind-machine-3 sh -c 'find . -maxdepth 1 -type f | grep backup | xargs -I {} mv {} /gardenadm/resources/'
 docker exec -ti gind-machine-3 sh -c 'find . -maxdepth 1 -type f | grep shootstate | xargs -I {} mv {} /gardenadm/resources/'
 
-echo "> Restoring the control plane Node..."
-docker exec -ti gind-machine-3 gardenadm init -d /gardenadm/resources --recover --use-bootstrap-etcd --prior-node-name=gind-machine-0
+Echo "> Restoring the control plane Node..."
+Docker exec -ti gind-machine-3 gardenadm init -d /gardenadm/resources --recover --use-bootstrap-etcd --prior-node-name=gind-machine-0
+
+echo "> Installing ETCDCTL CLI tool"
+docker exec -ti gind-machine-3 sh -c "apt-get update && apt-get install etcd-client"
+
+echo "> Deleting Master Leases from ETCD"
+docker exec -ti gind-machine-3 sh -c "ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/var/lib/static-pods/kube-apiserver/ca-etcd/bundle.crt --cert=/var/lib/static-pods/kube-apiserver/etcd-client/tls.crt --key=/var/lib/static-pods/kube-apiserver/etcd-client/tls.key del --prefix /registry/masterleases/"
