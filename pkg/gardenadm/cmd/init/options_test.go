@@ -115,6 +115,15 @@ spec:`)
 			})
 		})
 
+		When("prior-node-name flag validation", func() {
+			It("should reject --prior-node-name without --recover", func() {
+				options.Recover = false
+				options.PriorNodeName = "node-01"
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--prior-node-name must be combined with --recover")))
+			})
+		})
+
 		It("should fail because config dir path is not set", func() {
 			options.ConfigDir = ""
 			Expect(options.Validate()).To(MatchError(ContainSubstring("must provide a path to a config directory")))

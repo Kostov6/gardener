@@ -71,6 +71,10 @@ func (o *Options) validateFlagCombinations() error {
 		}
 	}
 
+	if o.PriorNodeName != "" && !o.Recover {
+		return fmt.Errorf("--prior-node-name must be combined with --recover")
+	}
+
 	return nil
 }
 
