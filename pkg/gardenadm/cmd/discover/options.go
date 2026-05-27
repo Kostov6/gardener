@@ -23,6 +23,10 @@ type Options struct {
 	Kubeconfig string
 	// ShootManifest is the path to the shoot manifest file.
 	ShootManifest string
+	// ShootName is the name of an existing Shoot in the garden cluster to discover resources for.
+	ShootName string
+	// ShootNamespace is the namespace of an existing Shoot in the garden cluster to discover resources for.
+	ShootNamespace string
 	// ManagedInfrastructure indicates whether Gardener will manage the shoot's infrastructure (network, domains,
 	// machines, etc.). Set this to true if using 'gardenadm bootstrap' for bootstrapping the shoot cluster. Set this to
 	// false if managing the infrastructure outside of Gardener.
@@ -52,8 +56,24 @@ func (o *Options) Validate() error {
 		return fmt.Errorf("must provide a path to a garden cluster kubeconfig")
 	}
 
-	if len(o.ShootManifest) == 0 {
-		return fmt.Errorf("must provide a path to the shoot manifest file")
+	existingShoot := len(o.ShootName) > 0 || len(o.ShootNamespace) > 0
+	newShoot := len(o.ShootManifest) > 0
+
+	if existingShoot && newShoot {
+		return fmt.Errorf("must not provide both a shoot manifest file and --shoot-name/--shoot-namespace")
+	}
+
+	if !existingShoot && !newShoot {
+		return fmt.Errorf("must provide either a path to the shoot manifest file or both --shoot-name and --shoot-namespace")
+	}
+
+	if existingShoot {
+		if len(o.ShootName) == 0 {
+			return fmt.Errorf("must provide --shoot-name when --shoot-namespace is set")
+		}
+		if len(o.ShootNamespace) == 0 {
+			return fmt.Errorf("must provide --shoot-namespace when --shoot-name is set")
+		}
 	}
 
 	return o.ManifestOptions.Validate()
@@ -65,5 +85,9 @@ func (o *Options) Complete() error { return o.ManifestOptions.Complete() }
 func (o *Options) addFlags(fs *pflag.FlagSet) {
 	o.ManifestOptions.AddFlags(fs)
 	fs.StringVarP(&o.Kubeconfig, "kubeconfig", "k", "", "Path to the kubeconfig file pointing to the garden cluster")
+	fs.StringVar(&o.ShootName, "shoot-name", "", "Name of an existing Shoot in the garden cluster to discover resources for. "+
+		"Mutually exclusive with the positional shoot manifest argument. Must be set together with --shoot-namespace.")
+	fs.StringVar(&o.ShootNamespace, "shoot-namespace", "", "Namespace of an existing Shoot in the garden cluster to discover resources for. "+
+		"Mutually exclusive with the positional shoot manifest argument. Must be set together with --shoot-name.")
 	fs.BoolVar(&o.ManagedInfrastructure, "managed-infrastructure", true, "Indicates whether Gardener will manage the shoot's infrastructure (network, domains, machines, etc.). Set this to true if using 'gardenadm bootstrap' for bootstrapping the shoot cluster. Set this to false if managing the infrastructure outside of Gardener.")
 }
