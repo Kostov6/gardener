@@ -93,8 +93,14 @@ docker exec -ti gind-machine-3 sh -c 'find . -maxdepth 1 -type f | grep shootsta
 Echo "> Restoring the control plane Node..."
 Docker exec -ti gind-machine-3 gardenadm init -d /gardenadm/resources --recover --use-bootstrap-etcd --prior-node-name=gind-machine-0
 
+# For the purpose of the local setup, we delete the Master Lease records from ETCD post-restore to speed up the development process.
+# Master leases are used for constructing an `EndpointSlice` for kuba-apiserver instances. During the restoration, the IP of the
+# previously runnnig instance gets addded to the new endpoint slice, since it's master lease is still present in ETCD. Having this
+# outdated IP within the `EndpointSlice` can cause connectivity issues since there is not instance for the [old] IP listed.
+# Deleting all master leases, cleans up the redundant one(s) and at the same time creates up-to-date leases for the currently running
+# kube-apiserver instance(s).
+# To read more about the reason why we delete these leases, refer to https://github.com/kubernetes/kubernetes/issues/86812.
 echo "> Installing ETCDCTL CLI tool"
 docker exec -ti gind-machine-3 sh -c "apt-get update && apt-get install etcd-client"
-
 echo "> Deleting Master Leases from ETCD"
 docker exec -ti gind-machine-3 sh -c "ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/var/lib/static-pods/kube-apiserver/ca-etcd/bundle.crt --cert=/var/lib/static-pods/kube-apiserver/etcd-client/tls.crt --key=/var/lib/static-pods/kube-apiserver/etcd-client/tls.key del --prefix /registry/masterleases/"
