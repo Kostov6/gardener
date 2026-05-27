@@ -69,6 +69,10 @@ func (o *Options) validateFlagCombinations() error {
 		if resources.ShootState == nil {
 			return fmt.Errorf("--recover requires a ShootState resource in the config directory, but none was found")
 		}
+
+		if o.PriorNodeName == "" {
+			return fmt.Errorf("--recover must be combined with --prior-node-name")
+		}
 	}
 
 	if o.PriorNodeName != "" && !o.Recover {

@@ -57,6 +57,19 @@ spec:
 		})
 	})
 
+	createShootStateManifest := func() {
+		var shootStateManifest strings.Builder
+		shootStateManifest.WriteString(`apiVersion: core.gardener.cloud/v1beta1
+kind: ShootState
+metadata:
+  name: test-shoot
+  namespace: garden-test
+spec:
+  gardener:
+  extensions:`)
+		Expect(os.WriteFile(filepath.Join(configDir, "state.yaml"), []byte(shootStateManifest.String()), 0644)).To(Succeed())
+	}
+
 	createShootManifest := func(credentialsBindingName string, zones []string, isControlPlane bool) {
 		var shootManifest strings.Builder
 		shootManifest.WriteString(`apiVersion: core.gardener.cloud/v1beta1
@@ -102,7 +115,17 @@ spec:`)
 
 	Describe("#Validate", func() {
 		When("recover flag validation", func() {
+			BeforeEach(func() {
+				createShootManifest("test-credentials", nil, true)
+				createShootStateManifest()
+			})
 
+			It("should reject --recover without --prior-node-name", func() {
+				options.Recover = true
+				options.PriorNodeName = ""
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover must be combined with --prior-node-name")))
+			})
 		})
 
 		When("prior-node-name flag validation", func() {
