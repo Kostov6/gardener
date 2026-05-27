@@ -21,3 +21,6 @@ docker exec -ti gind-machine-0 rm /gardenadm/discover-output/lease-self-hosted-s
 
 echo "> Restoring the control plane Node..."
 docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/discover-output --recover --prior-node-name=gind-machine-0 --use-bootstrap-etcd
+
+echo "> Verifying the control plane Node restoration..."
+./hack/dr-verify-restore.sh

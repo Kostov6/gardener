@@ -135,3 +135,6 @@ echo "> Installing ETCDCTL CLI tool"
 docker exec -ti gind-machine-3 sh -c "apt-get update && apt-get install etcd-client"
 echo "> Deleting Master Leases from ETCD"
 docker exec -ti gind-machine-3 sh -c "ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/var/lib/static-pods/kube-apiserver/ca-etcd/bundle.crt --cert=/var/lib/static-pods/kube-apiserver/etcd-client/tls.crt --key=/var/lib/static-pods/kube-apiserver/etcd-client/tls.key del --prefix /registry/masterleases/"
+
+echo "> Verifying the control plane Node restoration..."
+./hack/dr-verify-restore.sh
