@@ -90,8 +90,8 @@ docker exec -ti gind-machine-3 gardenadm discover /shoot.yaml --kubeconfig /virt
 docker exec -ti gind-machine-3 sh -c 'find . -maxdepth 1 -type f | grep backup | xargs -I {} mv {} /gardenadm/resources/'
 docker exec -ti gind-machine-3 sh -c 'find . -maxdepth 1 -type f | grep shootstate | xargs -I {} mv {} /gardenadm/resources/'
 
-Echo "> Restoring the control plane Node..."
-Docker exec -ti gind-machine-3 gardenadm init -d /gardenadm/resources --recover --use-bootstrap-etcd --prior-node-name=gind-machine-0
+echo "> Restoring the control plane Node..."
+docker exec -ti gind-machine-3 gardenadm init -d /gardenadm/resources --recover --use-bootstrap-etcd --prior-node-name=gind-machine-0
 
 # For the purpose of the local setup, we delete the Master Lease records from ETCD post-restore to speed up the development process.
 # Master leases are used for constructing an `EndpointSlice` for kuba-apiserver instances. During the restoration, the IP of the
