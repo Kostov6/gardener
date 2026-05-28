@@ -114,11 +114,20 @@ spec:`)
 				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover cannot be combined with --bootstrap")))
 			})
 
-			It("should reject --recover with --secret-file", func() {
+			It("should reject --recover without --prior-node-name", func() {
 				options.Recover = true
 				options.SecretFile = "secret.yaml"
 
-				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover cannot be combined with --secret-file")))
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover must be combined with --prior-node-name")))
+			})
+		})
+
+		When("prior-node-name flag validation", func() {
+			It("should reject --prior-node-name without --recover", func() {
+				options.Recover = false
+				options.PriorNodeName = "node-01"
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--prior-node-name must be combined with --recover")))
 			})
 		})
 
