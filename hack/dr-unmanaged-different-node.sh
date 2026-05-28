@@ -128,6 +128,10 @@ docker exec -ti gind-machine-3 gardenadm init -d /gardenadm/resources --recover 
 # Deleting all master leases, cleans up the redundant one(s) and at the same time creates up-to-date leases for the currently running
 # kube-apiserver instance(s).
 # To read more about the reason why we delete these leases, refer to https://github.com/kubernetes/kubernetes/issues/86812.
+# TODO: Revisit the master lease deletion logic and validate if:
+# - kube-proxy marks the IP in the EndpointSlice as unreachable and does not forward traffic to it.
+# - master lease expires at some point and the EndpointSlice gets updates with the relevant ones during reconciliation
+# - adding a "check" step within the init flow that will validate / perform the known ETCD data cleanup tasks
 echo "> Installing ETCDCTL CLI tool"
 docker exec -ti gind-machine-3 sh -c "apt-get update && apt-get install etcd-client"
 echo "> Deleting Master Leases from ETCD"
