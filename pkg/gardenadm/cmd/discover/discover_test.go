@@ -294,8 +294,9 @@ var _ = Describe("Discover", func() {
 
 		Context("for new Shoot", func() {
 			It("should return the expected output", func() {
+				Expect(command.Flags().Set("shoot-manifest", shootManifestPath)).To(Succeed())
 				Expect(command.Flags().Set("kubeconfig", "some-path-to-kubeconfig")).To(Succeed())
-				Expect(command.RunE(command, []string{shootManifestPath})).To(Succeed())
+				Expect(command.RunE(command, nil)).To(Succeed())
 
 				expectCommonExports()
 			})

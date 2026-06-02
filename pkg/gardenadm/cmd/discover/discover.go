@@ -41,9 +41,10 @@ func NewCommand(globalOpts *cmd.Options) *cobra.Command {
 		Use:   "discover",
 		Short: "Conveniently download Gardener configuration resources from an existing garden cluster",
 		Long:  "Conveniently download Gardener configuration resources from an existing garden cluster (CloudProfile, ControllerRegistrations, ControllerDeployments, etc.)",
+		Args:  cobra.NoArgs,
 
 		Example: `# Download the configuration for a new Shoot
-gardenadm discover <path-to-shoot-manifest>
+gardenadm discover --shoot-manifest <path-to-shoot-manifest>
 
 # Download the configuration for an existing Shoot
 gardenadm discover --shoot-name <name> --shoot-namespace <namespace>`,

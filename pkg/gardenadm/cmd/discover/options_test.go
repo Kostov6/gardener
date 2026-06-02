@@ -30,22 +30,6 @@ var _ = Describe("Options", func() {
 
 			Expect(options.Kubeconfig).To(Equal("kubeconfig"))
 		})
-
-		It("should set the shoot manifest and the config dir", func() {
-			Expect(options.ParseArgs([]string{"foo/bar/baz.yaml"})).To(Succeed())
-
-			Expect(options.ShootManifest).To(Equal("foo/bar/baz.yaml"))
-			Expect(options.ConfigDir).To(Equal("foo/bar"))
-		})
-
-		It("should not default the config dir when explicitly specified", func() {
-			options.ConfigDir = "baz"
-
-			Expect(options.ParseArgs([]string{"foo/bar/baz.yaml"})).To(Succeed())
-
-			Expect(options.ShootManifest).To(Equal("foo/bar/baz.yaml"))
-			Expect(options.ConfigDir).To(Equal("baz"))
-		})
 	})
 
 	Describe("#Validate", func() {
@@ -68,24 +52,24 @@ var _ = Describe("Options", func() {
 
 		It("should fail when neither shoot manifest nor --shoot-name/--shoot-namespace are set", func() {
 			options.Kubeconfig = "some-path-to-kubeconfig"
-			Expect(options.Validate()).To(MatchError(ContainSubstring("must provide either a path to the shoot manifest file or both --shoot-name and --shoot-namespace")))
+			Expect(options.Validate()).To(MatchError(ContainSubstring("must provide either --shoot-manifest or both --shoot-name and --shoot-namespace")))
 		})
 
-		It("should fail when both shoot manifest and --shoot-name are set (mutually exclusive)", func() {
+		It("should fail when both --shoot-manifest and --shoot-name are set (mutually exclusive)", func() {
 			options.Kubeconfig = "some-path-to-kubeconfig"
 			options.ShootManifest = "some-path-to-shoot-manifest"
 			options.ShootName = "test-shoot"
 			options.ShootNamespace = "garden-test"
 
-			Expect(options.Validate()).To(MatchError(ContainSubstring("must not provide both a shoot manifest file and --shoot-name/--shoot-namespace")))
+			Expect(options.Validate()).To(MatchError(ContainSubstring("must not provide both --shoot-manifest and --shoot-name/--shoot-namespace")))
 		})
 
-		It("should fail when both shoot manifest and --shoot-namespace are set (mutually exclusive)", func() {
+		It("should fail when both --shoot-manifest and --shoot-namespace are set (mutually exclusive)", func() {
 			options.Kubeconfig = "some-path-to-kubeconfig"
 			options.ShootManifest = "some-path-to-shoot-manifest"
 			options.ShootNamespace = "garden-test"
 
-			Expect(options.Validate()).To(MatchError(ContainSubstring("must not provide both a shoot manifest file and --shoot-name/--shoot-namespace")))
+			Expect(options.Validate()).To(MatchError(ContainSubstring("must not provide both --shoot-manifest and --shoot-name/--shoot-namespace")))
 		})
 
 		It("should fail when --shoot-namespace is set but --shoot-name is missing", func() {
@@ -123,6 +107,19 @@ var _ = Describe("Options", func() {
 	Describe("#Complete", func() {
 		It("should return nil", func() {
 			Expect(options.Complete()).To(Succeed())
+		})
+
+		It("should default the config dir from the shoot manifest path", func() {
+			options.ShootManifest = "foo/bar/baz.yaml"
+			Expect(options.Complete()).To(Succeed())
+			Expect(options.ConfigDir).To(Equal("foo/bar"))
+		})
+
+		It("should not default the config dir when explicitly specified", func() {
+			options.ShootManifest = "foo/bar/baz.yaml"
+			options.ConfigDir = "baz"
+			Expect(options.Complete()).To(Succeed())
+			Expect(options.ConfigDir).To(Equal("baz"))
 		})
 	})
 })

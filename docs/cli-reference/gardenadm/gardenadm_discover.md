@@ -14,7 +14,7 @@ gardenadm discover [flags]
 
 ```
 # Download the configuration for a new Shoot
-gardenadm discover <path-to-shoot-manifest>
+gardenadm discover --shoot-manifest <path-to-shoot-manifest>
 
 # Download the configuration for an existing Shoot
 gardenadm discover --shoot-name <name> --shoot-namespace <namespace>
@@ -27,8 +27,9 @@ gardenadm discover --shoot-name <name> --shoot-namespace <namespace>
   -h, --help                     help for discover
   -k, --kubeconfig string        Path to the kubeconfig file pointing to the garden cluster
       --managed-infrastructure   Indicates whether Gardener will manage the shoot's infrastructure (network, domains, machines, etc.). Set this to true if using 'gardenadm bootstrap' for bootstrapping the shoot cluster. Set this to false if managing the infrastructure outside of Gardener. (default true)
-      --shoot-name string        Name of an existing Shoot in the garden cluster to discover resources for. Mutually exclusive with the positional shoot manifest argument. Must be set together with --shoot-namespace.
-      --shoot-namespace string   Namespace of an existing Shoot in the garden cluster to discover resources for. Mutually exclusive with the positional shoot manifest argument. Must be set together with --shoot-name.
+      --shoot-manifest string    Path to a Shoot manifest file describing a new Shoot to discover resources for. Mutually exclusive with --shoot-name/--shoot-namespace.
+      --shoot-name string        Name of an existing Shoot in the garden cluster to discover resources for. Mutually exclusive with --shoot-manifest. Must be set together with --shoot-namespace.
+      --shoot-namespace string   Namespace of an existing Shoot in the garden cluster to discover resources for. Mutually exclusive with --shoot-manifest. Must be set together with --shoot-name.
 ```
 
 ### Options inherited from parent commands
