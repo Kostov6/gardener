@@ -114,11 +114,34 @@ spec:`)
 				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover cannot be combined with --bootstrap")))
 			})
 
+			It("should reject --recover when ShootState manifest is missing", func() {
+				Expect(os.Remove(filepath.Join(configDir, "state.yaml"))).To(Succeed())
+				options.Recover = true
+				options.PriorNodeName = "node-01"
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover requires a ShootState resource in the config directory, but none was found")))
+			})
+
+			It("should reject --recover when Shoot .status.uid is empty", func() {
+				createShootManifest("test-credentials", nil, true, "")
+				options.Recover = true
+				options.PriorNodeName = "node-01"
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover requires the Shoot manifest in the config directory to have .status.uid set")))
+			})
+
 			It("should reject --recover without --prior-node-name", func() {
 				options.Recover = true
 				options.SecretFile = "secret.yaml"
 
 				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover must be combined with --prior-node-name")))
+			})
+
+			It("should accept --recover when all prerequisites are met", func() {
+				options.Recover = true
+				options.PriorNodeName = "node-01"
+
+				Expect(options.Validate()).To(Succeed())
 			})
 		})
 
