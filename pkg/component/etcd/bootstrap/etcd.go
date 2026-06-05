@@ -274,7 +274,7 @@ func (e *etcdDeployer) Deploy(ctx context.Context) error {
 		}
 
 		if e.shouldRunBackupRestore() {
-			statefulSet.Spec.Template.Spec.InitContainers = e.backupInitContainer()
+			statefulSet.Spec.Template.Spec.InitContainers = []corev1.Container{e.backupInitContainer()}
 			statefulSet.Spec.Template.Spec.Volumes = append(statefulSet.Spec.Template.Spec.Volumes, e.backupVolumes()...)
 		}
 

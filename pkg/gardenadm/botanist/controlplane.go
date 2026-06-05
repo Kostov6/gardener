@@ -64,12 +64,12 @@ func (b *GardenadmBotanist) deployETCD(role string) func(context.Context) error 
 			if b.BackupDataPath != "" {
 				// Path structure: <backupBucketsRoot>/<bucketName>/<namespace>--<uid>/etcd-main/v2
 				// Strip the trailing version dir (e.g. "v2") to get the etcd-main dir.
-				etcdMainDir := filepath.Dir(b.BackupDataPath)         // .../etcd-main
-				entryDir := filepath.Dir(etcdMainDir)                 // .../<namespace>--<uid>
-				bucketDir := filepath.Dir(entryDir)                   // .../<bucketName>
-				backupBucketsRoot := filepath.Dir(bucketDir)          // <backupBucketsRoot>
-				storeContainer := filepath.Base(bucketDir)            // <bucketName>
-				storePrefix := filepath.Base(entryDir) + "/etcd-main" // <namespace>--<uid>/etcd-main
+				etcdMainDir := filepath.Dir(b.BackupDataPath)                      // .../etcd-main
+				entryDir := filepath.Dir(etcdMainDir)                              // .../<namespace>--<uid>
+				bucketDir := filepath.Dir(entryDir)                                // .../<bucketName>
+				backupBucketsRoot := filepath.Dir(bucketDir)                       // <backupBucketsRoot>
+				storeContainer := filepath.Base(bucketDir)                         // <bucketName>
+				storePrefix := filepath.Join(filepath.Base(entryDir), "etcd-main") // <namespace>--<uid>/etcd-main
 
 				etcdBackupRestore = &bootstrapetcd.EtcdBackupRestoreConfig{
 					EtcdbrctlImage:        "europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl:v0.40.0",

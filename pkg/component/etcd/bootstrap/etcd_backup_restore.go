@@ -5,6 +5,8 @@
 package bootstrap
 
 import (
+	"path/filepath"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 
@@ -39,11 +41,11 @@ func (e *etcdDeployer) shouldRunBackupRestore() bool {
 		e.values.BackupRestore.StoreContainer != ""
 }
 
-func (e *etcdDeployer) backupInitContainer() []corev1.Container {
+func (e *etcdDeployer) backupInitContainer() corev1.Container {
 	cfg := *e.values.BackupRestore
 	dataDir := staticpodtranslator.StatefulSetVolumeClaimTemplateHostPath(etcd.Name(e.values.Role))
 
-	return []corev1.Container{{
+	return corev1.Container{
 		Name:            "etcdbrctl-initialize",
 		Image:           cfg.EtcdbrctlImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
@@ -57,7 +59,7 @@ func (e *etcdDeployer) backupInitContainer() []corev1.Container {
 			"--storage-provider=Local",
 			"--store-container=" + cfg.StoreContainer,
 			"--store-prefix=" + cfg.StorePrefix,
-			"--data-dir=" + dataDir + "/new.etcd",
+			"--data-dir=" + filepath.Join(dataDir, "new.etcd"),
 			"--restoration-temp-snapshots-dir=" + volumeMountPathRestoreTmp,
 		},
 		Env: []corev1.EnvVar{
@@ -70,7 +72,7 @@ func (e *etcdDeployer) backupInitContainer() []corev1.Container {
 			{Name: volumeNameRestoreTmp, MountPath: volumeMountPathRestoreTmp},
 			{Name: volumeNameEtcdConf, MountPath: volumeMountPathEtcdConf},
 		},
-	}}
+	}
 }
 
 func (e *etcdDeployer) backupVolumes() []corev1.Volume {
