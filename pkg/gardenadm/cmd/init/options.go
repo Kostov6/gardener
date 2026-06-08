@@ -91,6 +91,14 @@ func (o *Options) validateFlagCombinations() error {
 		return fmt.Errorf("--prior-node-name must be combined with --recover")
 	}
 
+	if o.BackupDataPath != "" && !o.Recover {
+		return fmt.Errorf("--backup-data-path must be combined with --recover")
+	}
+
+	if o.Recover && o.BackupDataPath == "" {
+		return fmt.Errorf("--recover must be combined with --backup-data-path")
+	}
+
 	return nil
 }
 
