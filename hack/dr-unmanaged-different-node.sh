@@ -116,9 +116,11 @@ docker exec -ti gind-machine-3 mkdir /gardenadm/discover-output
 docker exec -ti gind-machine-3 gardenadm discover --shoot-name root --shoot-namespace garden --kubeconfig /virtual-garden-kubeconfig -d /gardenadm/discover-output
 docker exec -ti gind-machine-3 rm /gardenadm/discover-output/lease-self-hosted-shoot-root.yaml
 
-echo "> Restoring the control plane Node..."
+echo "> Preparing the etcd backup on the Node..."
 backup_data_path=$(find dev/local-backupbuckets | grep v2$ | grep -v garden)
 docker cp dev/local-backupbuckets gind-machine-3:/local-backupbuckets
+
+echo "> Restoring the control plane Node..."
 docker exec -ti gind-machine-3 gardenadm init -d /gardenadm/discover-output --recover --prior-node-name=gind-machine-0 --backup-data-path "/${backup_data_path#dev/}"
 
 # For the purpose of the local setup, we delete the Master Lease records from ETCD post-restore to speed up the development process.
