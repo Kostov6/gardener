@@ -22,7 +22,7 @@ docker exec -ti gind-machine-0 rm /gardenadm/discover-output/lease-self-hosted-s
 echo "> Restoring the control plane Node..."
 backup_data_path=$(find dev/local-backupbuckets | grep v2$ | grep -v garden)
 docker cp dev/local-backupbuckets gind-machine-0:/local-backupbuckets
-docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/discover-output --recover --prior-node-name=gind-machine-0 --use-bootstrap-etcd --backup-data-path "/${backup_data_path#dev/}"
+docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/discover-output --recover --prior-node-name=gind-machine-0 --backup-data-path "/${backup_data_path#dev/}"
 
 echo "> Verifying the control plane Node restoration..."
 ./hack/dr-verify-restore.sh

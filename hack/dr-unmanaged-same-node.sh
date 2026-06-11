@@ -47,7 +47,6 @@ echo "> Setting up gind (machine containers only)..."
 make gind-up SCENARIO=machines
 
 echo "> Initializing control plane Node..."
-# TODO: Can we use the "--use-bootstrap-etcd" flag?
 docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/resources
 
 echo "> Joining gind-machine-1 worker Node..."
@@ -121,7 +120,7 @@ echo "> Restoring the control plane Node..."
 # TODO: Check why GRM gets deployed to worker Nodes
 backup_data_path=$(find dev/local-backupbuckets | grep v2$ | grep -v garden)
 docker cp dev/local-backupbuckets gind-machine-0:/local-backupbuckets
-docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/discover-output --recover --prior-node-name=gind-machine-0 --use-bootstrap-etcd --backup-data-path "/${backup_data_path#dev/}"
+docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/discover-output --recover --prior-node-name=gind-machine-0 --backup-data-path "/${backup_data_path#dev/}"
 
 echo "> Verifying the control plane Node restoration..."
 ./hack/dr-verify-restore.sh
