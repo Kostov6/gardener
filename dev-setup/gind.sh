@@ -89,7 +89,7 @@ case "$COMMAND" in
 
     docker compose -f "$GIND_COMPOSE_FILE" down --volumes
 
-    "$(dirname "$0")/infra.sh" down
+    # "$(dirname "$0")/infra.sh" down
     ;;
 
   *)

@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+
+set -e
+
+function targetMachine() {
+  KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER="$PWD/dev-setup/kubeconfigs/self-hosted-shoot/kubeconfig"
+  ./hack/usage/generate-kubeconfig.sh self-hosted-shoot --docker gind-machine-0 > "$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
+  export KUBECONFIG="$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
+}
+
+function triggerEtcdDeltaSnapshot() {
+  # Trigger an etcd snapshot to flush the latest cluster state to the backup store.
+  # etcd-backup-restore takes deltas on a schedule (every 5min by default), so without an
+  # explicit trigger the bucket may not yet contain recent state (e.g. the gardenlet
+  # Deployment created after `gardenadm connect`).
+  # Trigger a delta (not a full) so the recovery path exercises full+delta replay, matching a real disaster.
+  # /snapshot/delta blocks until the delta is uploaded.
+
+  targetMachine
+  ETCD_MAIN_POD=$(kubectl -n kube-system get pod -l app.kubernetes.io/name=etcd-main \
+    -o jsonpath='{.items[0].metadata.name}')
+  if [ -z "${ETCD_MAIN_POD}" ]; then
+    echo "ERROR: could not find etcd-main pod in kube-system" >&2
+    exit 1
+  fi
+
+  kubectl -n kube-system port-forward "pod/${ETCD_MAIN_POD}" 8080:8080 >/dev/null &
+  PF_PID=$!
+  trap "kill ${PF_PID} 2>/dev/null || true" EXIT
+
+  echo "> Waiting for the port-forward to become ready..."
+  for i in {1..15}; do
+    if curl -sk -o /dev/null "https://localhost:8080/healthz"; then
+      break
+    fi
+    sleep 1
+  done
+
+  echo "> Sending HTTP request for a delta snapshot..."
+  curl -sk --fail "https://localhost:8080/snapshot/delta"
+
+  kill ${PF_PID} 2>/dev/null || true
+  trap - EXIT
+}
+
+VIRTUAL_GARDEN_KUBECONFIG="${VIRTUAL_GARDEN_KUBECONFIG:-./dev-setup/kubeconfigs/virtual-garden/kubeconfig}"
+
+echo "> Cleaning up leftover resources from previous runs (if any)..."
+if kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get shoot root &>/dev/null; then
+  kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden annotate shoot root confirmation.gardener.cloud/deletion=true --overwrite
+  kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden patch shoot root --type=merge -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true
+  kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden delete shoot root --wait=false --ignore-not-found
+fi
+
+if kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get shootstate root &>/dev/null; then
+  kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden annotate shootstate root confirmation.gardener.cloud/deletion=true --overwrite
+  kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden delete shootstate root --wait=false --ignore-not-found
+fi
+for be in $(kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" get backupentries -A -o name 2>/dev/null); do
+  name="${be#*/}"
+  kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden patch backupentry "$name" --type=merge -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true
+  kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden delete backupentry "$name" --wait=false --ignore-not-found 2>/dev/null || true
+done
+for bb in $(kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" get backupbuckets -o name 2>/dev/null); do
+  name="${bb#*/}"
+  kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" patch backupbucket "$name" --type=merge -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true
+  kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" delete backupbucket "$name" --wait=false --ignore-not-found 2>/dev/null || true
+done
+
+echo "> Setting up gind (machine containers only)..."
+make gind-up SCENARIO=machines
+
+echo "> Initializing control plane Node..."
+# TODO: Can we use the "--use-bootstrap-etcd" flag?
+docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/resources
+
+echo "> Joining gind-machine-1 worker Node..."
+JOIN_COMMAND_1=$(docker exec -ti gind-machine-0 gardenadm token create --print-join-command | tr -d '"')
+docker exec -ti gind-machine-1 $(echo $JOIN_COMMAND_1)
+echo "> Joining gind-machine-2 worker Node..."
+JOIN_COMMAND_2=$(docker exec -ti gind-machine-0 gardenadm token create --print-join-command | tr -d '"')
+docker exec -ti gind-machine-2 $(echo $JOIN_COMMAND_2)
+
+echo "> Creating dummy workload..."
+targetMachine
+./hack/create-workload.sh
+
+echo "> Building gardenadm binary..."
+make -B gardenadm
+
+echo "> Connecting the Shoot cluster to Gardener..."
+CONNECT_COMMAND=$(KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" ./bin/gardenadm token create --print-connect-command --shoot-namespace=garden --shoot-name=root | tr -d '"')
+docker exec -ti gind-machine-0 $(echo $CONNECT_COMMAND)
+
+echo "> Obtaining a ShootState resource for the Shoot..."
+# Patching the Shoot status with a successful last operation is required to allow the shootstate-controller to create a ShootState for the Shoot
+echo "> Patching the Shoot status with a successful create lastOperation..."
+kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden patch shoot root --subresource status --type=merge --patch='{"status":{"lastOperation":{"type": "Create","state": "Succeeded"}}}'
+
+# Rolling out the gardenlet Deployment is required to trigger the shootstate-controller to create a ShootState for the Shoot
+echo "> Rolling out the kube-system/gardenlet Deployment to trigger ShootState creation..."
+targetMachine
+kubectl -n kube-system rollout restart deployment/gardenlet
+echo "> Waiting until the kube-system/gardenlet Deployment successfully rolled out..."
+kubectl -n kube-system rollout status deployment/gardenlet
+echo "> Waiting until the ShootState is created..."
+for i in {1..6}; do
+  if kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get shootstate root &> /dev/null; then
+    break
+  fi
+  echo "> Attempt $i/6: Waiting until garden/root ShootState is created. Sleeping 10s..."
+  sleep 10
+done
+
+echo "> Triggering an etcd delta snapshot before simulating the disaster..."
+triggerEtcdDeltaSnapshot
+
+echo
+echo "> Simulating a disaster event..."
+echo "> Stopping the gind-machine-0 container..."
+docker stop gind-machine-0
+echo "> Deleting the gind-machine-0 container with its volumes..."
+docker rm --volumes gind-machine-0
+
+echo "> Setting up gind (recreating the gind-machine-0 container)..."
+make gind-up SCENARIO=machines
+
+echo "> Copying Shoot manifest and virtual garden kubeconfig to the gind-machine-0 container..."
+docker cp ./dev-setup/kubeconfigs/virtual-garden/kubeconfig gind-machine-0:/virtual-garden-kubeconfig
+
+echo "> Downloading Gardener configuration resources for the Shoot..."
+docker exec -ti gind-machine-0 mkdir /gardenadm/discover-output
+docker exec -ti gind-machine-0 gardenadm discover --shoot-name root --shoot-namespace garden --kubeconfig /virtual-garden-kubeconfig -d /gardenadm/discover-output
+docker exec -ti gind-machine-0 rm /gardenadm/discover-output/lease-self-hosted-shoot-root.yaml
+
+echo "> Restoring the control plane Node..."
+# TODO: Check why GRM gets deployed to worker Nodes
+bec=$(kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get bec -o jsonpath='{.items[0].metadata.name}')
+backup_data_path=$(find dev/local-backupbuckets | grep v2$ | grep -v garden | grep "$bec")
+docker cp dev/local-backupbuckets gind-machine-0:/local-backupbuckets
+docker exec -ti gind-machine-0 gardenadm init -d /gardenadm/discover-output --recover --prior-node-name=gind-machine-0 --use-bootstrap-etcd --backup-data-path "/${backup_data_path#dev/}"
+
+echo "> Verifying the control plane Node restoration..."
+./hack/dr-verify-restore.sh

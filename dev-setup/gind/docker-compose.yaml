@@ -52,15 +52,27 @@ services:
     <<: *machine
     container_name: gind-machine-0
     hostname: gind-machine-0
+    networks:
+      kind:
+        ipv4_address: 172.18.0.201
   machine-1:
     <<: *machine
     container_name: gind-machine-1
     hostname: gind-machine-1
+    networks:
+      kind:
+        ipv4_address: 172.18.0.202
   machine-2:
     <<: *machine
     container_name: gind-machine-2
     hostname: gind-machine-2
+    networks:
+      kind:
+        ipv4_address: 172.18.0.203
   machine-3:
     <<: *machine
     container_name: gind-machine-3
     hostname: gind-machine-3
+    networks:
+      kind:
+        ipv4_address: 172.18.0.204
