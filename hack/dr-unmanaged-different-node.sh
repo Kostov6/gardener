@@ -108,7 +108,7 @@ echo "> Updating envoy.yaml to route apiserver traffic to gind-machine-3..."
 sed -i 's/address: gind-machine-[0-9]*/address: gind-machine-3/g' dev-setup/gind/envoy.yaml
 docker restart gind-apiserver-lb
 
-echo "> Copying Shoot manifest and virtual garden kubeconfig to the gind-machine-3 container..."
+echo "> Copying virtual garden kubeconfig to the gind-machine-3 container..."
 docker cp ./dev-setup/kubeconfigs/virtual-garden/kubeconfig gind-machine-3:/virtual-garden-kubeconfig
 
 echo "> Downloading Gardener configuration resources for the Shoot..."

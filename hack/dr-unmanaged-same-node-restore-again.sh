@@ -11,7 +11,7 @@ docker rm --volumes gind-machine-0
 echo "> Setting up gind (recreating the gind-machine-0 container)..."
 make gind-up SCENARIO=machines
 
-echo "> Copying Shoot manifest and virtual garden kubeconfig to the gind-machine-0 container..."
+echo "> Copying virtual garden kubeconfig to the gind-machine-0 container..."
 docker cp ./dev-setup/kubeconfigs/virtual-garden/kubeconfig gind-machine-0:/virtual-garden-kubeconfig
 
 echo "> Downloading Gardener configuration resources for the Shoot..."
