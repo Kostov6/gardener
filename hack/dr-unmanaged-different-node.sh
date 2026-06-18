@@ -24,23 +24,8 @@ function triggerEtcdDeltaSnapshot() {
     exit 1
   fi
 
-  kubectl -n kube-system port-forward "pod/${ETCD_MAIN_POD}" 8080:8080 >/dev/null &
-  PF_PID=$!
-  trap "kill ${PF_PID} 2>/dev/null || true" EXIT
-
-  echo "> Waiting for the port-forward to become ready..."
-  for i in {1..15}; do
-    if curl -sk -o /dev/null "https://localhost:8080/healthz"; then
-      break
-    fi
-    sleep 1
-  done
-
   echo "> Sending HTTP request for a delta snapshot..."
-  curl -sk --fail "https://localhost:8080/snapshot/delta"
-
-  kill ${PF_PID} 2>/dev/null || true
-  trap - EXIT
+  docker exec -ti gind-machine-0 curl -sk --fail "https://localhost:8080/snapshot/delta"
 }
 
 echo "> Setting up gind (machine containers only)..."
