@@ -73,14 +73,14 @@ func run(ctx context.Context, opts *Options) error {
 		return runRecover(ctx, opts)
 	}
 
-	return runInit(ctx, opts)
+	return RunInit(ctx, opts)
 }
 
 func runRecover(ctx context.Context, opts *Options) error {
 	phaseOpts := *opts
 	phaseOpts.Recover = false
 
-	if _, err := bootstrapControlPlane(ctx, &phaseOpts); err != nil {
+	if _, err := BootstrapControlPlane(ctx, &phaseOpts, opts.BackupDataPath); err != nil {
 		return fmt.Errorf("failed first recovery phase: %w", err)
 	}
 
@@ -95,14 +95,14 @@ func runRecover(ctx context.Context, opts *Options) error {
 	b.SeedClientSet = clientSet
 	b.ShootClientSet = clientSet
 
-	if err := prepareRecoverSecondPhase(ctx, b, opts); err != nil {
+	if err := prepareRecoverSecondPhase(ctx, b, opts.PriorNodeName); err != nil {
 		return fmt.Errorf("failed preparing second recovery phase: %w", err)
 	}
 
-	return runInit(ctx, &phaseOpts)
+	return RunInit(ctx, &phaseOpts)
 }
 
-func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanist, opts *Options) error {
+func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanist, priorNodeName string) error {
 	b.Logger.Info("Preparing second recovery phase cleanup")
 
 	managedResourceList := &resourcesv1alpha1.ManagedResourceList{}
@@ -130,7 +130,7 @@ func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanis
 		return fmt.Errorf("failed to wait until managedresources deletion: %w", err)
 	}
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: opts.PriorNodeName}}
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: priorNodeName}}
 	b.Logger.Info("Deleting node", "name", b.HostName)
 	if err := b.SeedClientSet.Client().Delete(ctx, node); crclient.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("failed deleting node %q: %w", b.HostName, err)
@@ -141,7 +141,7 @@ func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanis
 		return fmt.Errorf("failed listing pods: %w", err)
 	}
 	for _, pod := range podList.Items {
-		if pod.Spec.NodeName != opts.PriorNodeName {
+		if pod.Spec.NodeName != priorNodeName {
 			continue
 		}
 		b.Logger.Info("Force deleting pod on recovery node", "namespace", pod.Namespace, "name", pod.Name, "node", pod.Spec.NodeName)
@@ -156,8 +156,10 @@ func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanis
 	return nil
 }
 
-func runInit(ctx context.Context, opts *Options) error {
-	b, err := bootstrapControlPlane(ctx, opts)
+// RunInit runs the main init flow that bootstraps the control plane and deploys the shoot components.
+// It is exported so that the `gardenadm restore` command can reuse the same graph.
+func RunInit(ctx context.Context, opts *Options) error {
+	b, err := BootstrapControlPlane(ctx, opts, opts.BackupDataPath)
 	if err != nil {
 		return fmt.Errorf("failed bootstrapping control plane: %w", err)
 	}
@@ -579,7 +581,10 @@ see https://gardener.cloud/docs/gardener/shoot/shoot_access/.
 	return nil
 }
 
-func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.GardenadmBotanist, error) {
+// BootstrapControlPlane bootstraps the control plane node and returns a GardenadmBotanist connected to the API server.
+// When backupDataPath is non-empty, the bootstrap etcd is initialized from that local snapshot for disaster recovery.
+// It is exported so that the `gardenadm restore` command can reuse the same graph.
+func BootstrapControlPlane(ctx context.Context, opts *Options, backupDataPath string) (*botanist.GardenadmBotanist, error) {
 	b, err := botanist.NewGardenadmBotanistFromManifests(ctx, opts.Log, nil, opts.ConfigDir, true)
 	if err != nil {
 		return nil, err
@@ -589,7 +594,7 @@ func bootstrapControlPlane(ctx context.Context, opts *Options) (*botanist.Garden
 		b.Zone = ptr.To(opts.Zone)
 	}
 
-	b.BackupDataPath = opts.BackupDataPath
+	b.BackupDataPath = backupDataPath
 
 	kubeconfigFileExists, err := b.FS.Exists(botanist.PathKubeconfig)
 	if err != nil {
