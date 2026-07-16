@@ -12,14 +12,10 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
-	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1beta1helper "github.com/gardener/gardener/pkg/api/core/v1beta1/helper"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
-	resourcesv1alpha1 "github.com/gardener/gardener/pkg/apis/resources/v1alpha1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	seedsystem "github.com/gardener/gardener/pkg/component/seed/system"
 	gardenerextensions "github.com/gardener/gardener/pkg/extensions"
@@ -28,7 +24,6 @@ import (
 	"github.com/gardener/gardener/pkg/utils/flow"
 	gardenerutils "github.com/gardener/gardener/pkg/utils/gardener"
 	gardenletutils "github.com/gardener/gardener/pkg/utils/gardener/gardenlet"
-	kubernetesutils "github.com/gardener/gardener/pkg/utils/kubernetes"
 )
 
 // NewCommand creates a new cobra.Command.
@@ -59,7 +54,7 @@ gardenadm init --config-dir /path/to/manifests --zone zone-a`,
 				return err
 			}
 
-			return run(cmd.Context(), opts)
+			return RunInit(cmd.Context(), opts)
 		},
 	}
 
@@ -68,98 +63,10 @@ gardenadm init --config-dir /path/to/manifests --zone zone-a`,
 	return cmd
 }
 
-func run(ctx context.Context, opts *Options) error {
-	if opts.Recover {
-		return runRecover(ctx, opts)
-	}
-
-	return RunInit(ctx, opts)
-}
-
-func runRecover(ctx context.Context, opts *Options) error {
-	phaseOpts := *opts
-	phaseOpts.Recover = false
-
-	if _, err := BootstrapControlPlane(ctx, &phaseOpts, opts.BackupDataPath); err != nil {
-		return fmt.Errorf("failed first recovery phase: %w", err)
-	}
-
-	b, err := botanist.NewGardenadmBotanistFromManifests(ctx, opts.Log, nil, opts.ConfigDir, true)
-	if err != nil {
-		return fmt.Errorf("failed preparing recover cleanup: %w", err)
-	}
-	clientSet, err := b.CreateClientSet(ctx)
-	if err != nil {
-		return fmt.Errorf("failed creating client for recover cleanup: %w", err)
-	}
-	b.SeedClientSet = clientSet
-	b.ShootClientSet = clientSet
-
-	if err := prepareRecoverSecondPhase(ctx, b, opts.PriorNodeName); err != nil {
-		return fmt.Errorf("failed preparing second recovery phase: %w", err)
-	}
-
-	return RunInit(ctx, &phaseOpts)
-}
-
-func prepareRecoverSecondPhase(ctx context.Context, b *botanist.GardenadmBotanist, priorNodeName string) error {
-	b.Logger.Info("Preparing second recovery phase cleanup")
-
-	managedResourceList := &resourcesv1alpha1.ManagedResourceList{}
-	if err := b.SeedClientSet.Client().List(ctx, managedResourceList); err != nil {
-		return fmt.Errorf("failed listing managedresources: %w", err)
-	}
-	for _, mr := range managedResourceList.Items {
-		obj := mr.DeepCopy()
-		obj.SetFinalizers(nil)
-		b.Logger.Info("Updating ManagedResource before deletion", "namespace", obj.Namespace, "name", obj.Name)
-		if err := b.SeedClientSet.Client().Update(ctx, obj); crclient.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed updating managedresource %s/%s: %w", obj.Namespace, obj.Name, err)
-		}
-		b.Logger.Info("Deleting ManagedResource", "namespace", obj.Namespace, "name", obj.Name)
-		if err := b.SeedClientSet.Client().Delete(ctx, obj); crclient.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed deleting managedresource %s/%s: %w", obj.Namespace, obj.Name, err)
-		}
-	}
-
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 1*time.Minute)
-	defer cancel()
-
-	b.Logger.Info("Waiting for ManagedResources clean up")
-	if err := kubernetesutils.WaitUntilResourcesDeleted(ctxWithTimeout, b.SeedClientSet.Client(), managedResourceList, 10*time.Second); err != nil {
-		return fmt.Errorf("failed to wait until managedresources deletion: %w", err)
-	}
-
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: priorNodeName}}
-	b.Logger.Info("Deleting node", "name", b.HostName)
-	if err := b.SeedClientSet.Client().Delete(ctx, node); crclient.IgnoreNotFound(err) != nil {
-		return fmt.Errorf("failed deleting node %q: %w", b.HostName, err)
-	}
-
-	podList := &corev1.PodList{}
-	if err := b.SeedClientSet.Client().List(ctx, podList); err != nil {
-		return fmt.Errorf("failed listing pods: %w", err)
-	}
-	for _, pod := range podList.Items {
-		if pod.Spec.NodeName != priorNodeName {
-			continue
-		}
-		b.Logger.Info("Force deleting pod on recovery node", "namespace", pod.Namespace, "name", pod.Name, "node", pod.Spec.NodeName)
-		deletePolicy := metav1.DeletePropagationBackground
-		if err := b.SeedClientSet.Client().Delete(ctx, pod.DeepCopy(), &crclient.DeleteOptions{GracePeriodSeconds: ptr.To[int64](0), PropagationPolicy: &deletePolicy}); crclient.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed force deleting pod %s/%s: %w", pod.Namespace, pod.Name, err)
-		}
-	}
-
-	b.Logger.Info("Finished second recovery phase cleanup")
-
-	return nil
-}
-
 // RunInit runs the main init flow that bootstraps the control plane and deploys the shoot components.
 // It is exported so that the `gardenadm restore` command can reuse the same graph.
 func RunInit(ctx context.Context, opts *Options) error {
-	b, err := BootstrapControlPlane(ctx, opts, opts.BackupDataPath)
+	b, err := BootstrapControlPlane(ctx, opts, "")
 	if err != nil {
 		return fmt.Errorf("failed bootstrapping control plane: %w", err)
 	}
