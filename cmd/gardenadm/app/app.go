@@ -18,6 +18,7 @@ import (
 	"github.com/gardener/gardener/pkg/gardenadm/cmd/discover"
 	initcmd "github.com/gardener/gardener/pkg/gardenadm/cmd/init"
 	"github.com/gardener/gardener/pkg/gardenadm/cmd/join"
+	"github.com/gardener/gardener/pkg/gardenadm/cmd/restore"
 	"github.com/gardener/gardener/pkg/gardenadm/cmd/token"
 	"github.com/gardener/gardener/pkg/gardenadm/cmd/version"
 )
@@ -83,6 +84,7 @@ func prepareClusterBootstrapGroup(cmd *cobra.Command, opts *cmd.Options) {
 		join.NewCommand(opts),
 		bootstrap.NewCommand(opts),
 		token.NewCommand(opts),
+		restore.NewCommand(opts),
 	} {
 		subcommand.GroupID = group.ID
 		cmd.AddCommand(subcommand)
