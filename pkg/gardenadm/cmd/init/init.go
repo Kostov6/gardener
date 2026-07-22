@@ -20,7 +20,6 @@ import (
 	"github.com/gardener/gardener/pkg/gardenlet/operation/botanist"
 	"github.com/gardener/gardener/pkg/utils/flow"
 	gardenletutils "github.com/gardener/gardener/pkg/utils/gardener/gardenlet"
-	kubernetesutils "github.com/gardener/gardener/pkg/utils/kubernetes"
 )
 
 // NewCommand creates a new cobra.Command.
@@ -51,7 +50,7 @@ gardenadm init --config-dir /path/to/manifests --zone zone-a`,
 				return err
 			}
 
-			return run(cmd.Context(), opts)
+			return RunInit(cmd.Context(), opts)
 		},
 	}
 
