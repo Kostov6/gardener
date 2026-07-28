@@ -16,6 +16,13 @@ if ! kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" get namespaces &>/dev/nul
   exit 1
 fi
 
+if kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get shoot root &>/dev/null; then
+  echo "ERROR: Shoot garden/root already exists in the virtual garden cluster." >&2
+  echo "It was likely left behind by a previous disaster-recovery run." >&2
+  echo "Run ./hack/dr-clean-orphaned-resources.sh to clean up the orphaned resources before starting a new run." >&2
+  exit 1
+fi
+
 function targetMachine() {
   KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER="$PWD/dev-setup/kubeconfigs/self-hosted-shoot/kubeconfig"
   ./hack/usage/generate-kubeconfig.sh self-hosted-shoot --docker gind-machine-0 > "$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
