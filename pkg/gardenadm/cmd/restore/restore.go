@@ -65,7 +65,7 @@ func run(ctx context.Context, opts *Options) error {
 		// Restore requires an etcd backup, which only a control plane using etcd-druid (not the bootstrap etcd)
 		// produces. Hence, restore always transitions to etcd-druid and does not expose --use-bootstrap-etcd.
 		UseBootstrapEtcd: false,
-		UseHostNetwork:   opts.UseHostNetwork,
+		UseHostNetwork:   false,
 		Zone:             opts.Zone,
 	}
 
