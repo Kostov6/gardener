@@ -69,7 +69,13 @@ func (o *Options) Validate() error {
 		return err
 	}
 
-	return o.validateZone(resources.Shoot)
+	effectiveZone, err := cmd.ValidateAndDetermineControlPlaneZone(resources.Shoot, o.Zone)
+	if err != nil {
+		return err
+	}
+
+	o.Zone = effectiveZone
+	return nil
 }
 
 func validateShoot(shoot *gardencorev1beta1.Shoot) error {
@@ -118,30 +124,6 @@ func validateBackupResources(resources gardenadm.Resources) error {
 		return fmt.Errorf("BackupEntry manifest .spec.bucketName %q does not match the BackupBucket manifest name %q", resources.BackupEntry.Spec.BucketName, resources.BackupBucket.Name)
 	}
 
-	return nil
-}
-
-// validateZone validates the zone configuration against the shoot specification.
-func (o *Options) validateZone(shoot *gardencorev1beta1.Shoot) error {
-	if v1beta1helper.HasManagedInfrastructure(shoot) {
-		if o.Zone != "" {
-			return fmt.Errorf("zone can't be configured for shoot with managed infrastructure")
-		}
-		return nil
-	}
-
-	// restore command is only for control plane node, therefore we look for the control plane pool
-	var controlPlanePool *gardencorev1beta1.Worker
-	if controlPlanePool = v1beta1helper.ControlPlaneWorkerPoolForShoot(shoot.Spec.Provider.Workers); controlPlanePool == nil {
-		return fmt.Errorf("zone validation failed, shoot doesn't have a control plane worker pool configured")
-	}
-
-	effectiveZone, err := cmd.DetermineZone(*controlPlanePool, o.Zone)
-	if err != nil {
-		return fmt.Errorf("failed determining zone for control plane worker pool %q: %w", controlPlanePool.Name, err)
-	}
-
-	o.Zone = effectiveZone
 	return nil
 }
 
