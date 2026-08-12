@@ -7,8 +7,10 @@ package unmanagedinfra
 import (
 	"context"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -29,6 +31,10 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			shootClusterKubeconfigPathOnHost = filepath.Join("..", "..", "..", "dev-setup", "kubeconfigs", "self-hosted-shoot", "kubeconfig")
 
 			controlPlaneNamespace = "kube-system"
+
+			// backupDataPathOnNode is the path to the etcd backup data on the recreated node, passed to
+			// 'gardenadm restore --backup-data-path'. It is computed when copying the local backup onto the node.
+			backupDataPathOnNode string
 		)
 
 		It("should create a client for the self-hosted shoot API server", func(ctx SpecContext) {
@@ -80,6 +86,39 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			cmd.Stderr = gexec.NewPrefixedWriter("[err] ", GinkgoWriter)
 			Expect(cmd.Run()).To(Succeed())
 		}, SpecTimeout(5*time.Minute))
+
+		It("should copy the local etcd backup onto the recreated node", func(ctx SpecContext) {
+			// This mirrors hack/dr-unmanaged-same-node.sh: the etcd backup lives on the host's local disk (the local
+			// backup bucket). We locate the '.../etcd-main/v2' backup directory (excluding the garden bucket), copy the
+			// whole local-backupbuckets directory onto the node, and compute the on-node --backup-data-path that
+			// 'gardenadm restore' will read from.
+			localBackupBucketsOnHost := filepath.Join("..", "..", "..", "dev", "local-backupbuckets")
+
+			By("Locate the etcd-main v2 backup directory on the host")
+			var backupDataPathOnHost string
+			Expect(filepath.WalkDir(localBackupBucketsOnHost, func(path string, d os.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if d.IsDir() && filepath.Base(path) == "v2" && !strings.Contains(path, "garden") {
+					backupDataPathOnHost = path
+				}
+				return nil
+			})).To(Succeed())
+			Expect(backupDataPathOnHost).NotTo(BeEmpty(), "expected to find an etcd-main v2 backup directory under %s", localBackupBucketsOnHost)
+			GinkgoWriter.Printf("Found etcd backup data on host at %q\n", backupDataPathOnHost)
+
+			By("Copy the local backup buckets onto the recreated node")
+			_, _, err := dockerCommand(ctx, "cp", localBackupBucketsOnHost, machineContainerName(0)+":/local-backupbuckets")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Translate the host path to the on-node path: strip the leading "<...>/dev/" and root it at "/", so
+			// e.g. "dev/local-backupbuckets/<uid>/.../v2" becomes "/local-backupbuckets/<uid>/.../v2".
+			relToBackupBuckets, err := filepath.Rel(localBackupBucketsOnHost, backupDataPathOnHost)
+			Expect(err).NotTo(HaveOccurred())
+			backupDataPathOnNode = filepath.Join("/local-backupbuckets", relToBackupBuckets)
+			GinkgoWriter.Printf("Backup data path on node: %q\n", backupDataPathOnNode)
+		}, SpecTimeout(2*time.Minute))
 
 		It("should observe that all nodes are ready", func(ctx SpecContext) {
 			Eventually(ctx, func(g Gomega) {
