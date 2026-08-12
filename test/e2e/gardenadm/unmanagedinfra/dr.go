@@ -63,6 +63,24 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			Expect(err).NotTo(HaveOccurred())
 		}, SpecTimeout(time.Minute))
 
+		It("should simulate a disaster by destroying the control plane node", func(ctx SpecContext) {
+			// This mirrors the disaster event in hack/dr-unmanaged-same-node.sh: the control plane node container is
+			// stopped and removed together with its volumes, which destroys the etcd data. The container is then
+			// recreated (without running gardenadm), leaving the cluster broken until 'gardenadm restore' recovers it.
+			By("Stop and remove the control plane node container including its volumes")
+			_, _, err := dockerCommand(ctx, "stop", machineContainerName(0))
+			Expect(err).NotTo(HaveOccurred())
+			_, _, err = dockerCommand(ctx, "rm", "--volumes", machineContainerName(0))
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Recreate the control plane node container")
+			cmd := exec.CommandContext(ctx, "make", "gind-up", "SCENARIO=machines") // #nosec G204 -- Used for e2e tests only.
+			cmd.Dir = filepath.Join("..", "..", "..")
+			cmd.Stdout = gexec.NewPrefixedWriter("[out] ", GinkgoWriter)
+			cmd.Stderr = gexec.NewPrefixedWriter("[err] ", GinkgoWriter)
+			Expect(cmd.Run()).To(Succeed())
+		}, SpecTimeout(5*time.Minute))
+
 		It("should observe that all nodes are ready", func(ctx SpecContext) {
 			Eventually(ctx, func(g Gomega) {
 				nodeList := &corev1.NodeList{}
