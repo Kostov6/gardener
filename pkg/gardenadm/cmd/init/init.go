@@ -53,7 +53,7 @@ gardenadm init --config-dir /path/to/manifests --zone zone-a`,
 				return err
 			}
 
-			return runInit(cmd.Context(), opts)
+			return run(cmd.Context(), opts)
 		},
 	}
 
@@ -62,8 +62,8 @@ gardenadm init --config-dir /path/to/manifests --zone zone-a`,
 	return cmd
 }
 
-// runInit bootstraps the control plane and then runs the main init flow that deploys the shoot components.
-func runInit(ctx context.Context, opts *Options) error {
+// run bootstraps the control plane and then runs the main init flow that deploys the shoot components.
+func run(ctx context.Context, opts *Options) error {
 	b, err := BootstrapControlPlane(ctx, opts, "")
 	if err != nil {
 		return fmt.Errorf("failed bootstrapping control plane: %w", err)
