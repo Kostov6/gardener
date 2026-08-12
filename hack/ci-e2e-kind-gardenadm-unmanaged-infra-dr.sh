@@ -8,20 +8,24 @@ set -o nounset
 set -o pipefail
 set -o errexit
 
-# source $(dirname "${0}")/ci-common.sh
+source $(dirname "${0}")/ci-common.sh
 
-# clamp_mss_to_pmtu
+clamp_mss_to_pmtu
 
-# # export all container logs and events after test execution
-# trap "
-#   ( export_artifacts_host_services; export_artifacts_infra; export_artifacts_load_balancers )
-#   ( export_artifacts_gind )
-#   ( export KUBECONFIG=$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER; export_artifacts_for_cluster 'self-hosted-shoot' )
-#   ( make gind-down )
-# " EXIT
+# export all container logs and events after test execution, then tear down both clusters
+trap "
+  ( export_artifacts_host_services; export_artifacts_infra; export_artifacts_load_balancers )
+  ( export_artifacts_gind )
+  ( export KUBECONFIG=$KUBECONFIG_RUNTIME_CLUSTER; export_artifacts 'gardener-local'; export_resource_yamls_for garden )
+  ( export KUBECONFIG=$KUBECONFIG_VIRTUAL_GARDEN_CLUSTER; export cluster_name='virtual-garden'; export_resource_yamls_for seeds shoots shootstates managedseeds controllerinstallations )
+  ( export KUBECONFIG=$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER; export_artifacts_for_cluster 'self-hosted-shoot' )
+  ( make gind-down )
+  ( make kind-down )
+" EXIT
 
-# The unmanaged-infra disaster-recovery scenario runs entirely against the self-hosted shoot on the gind machine
-# containers. It does not require a runtime or virtual garden cluster: the etcd backup lives on the node's local disk
-# and the Gardener configuration resources needed by 'gardenadm restore' are provided to the test directly.
-make gind-up GARDENADM_INIT_FLAGS="--log-level=debug"
+make kind-up
+make gardenadm-up SCENARIO=connect-kind
+
+make gind-up GARDENADM_INIT_FLAGS="--log-level=debug" SCENARIO=join
+
 make test-e2e-local-gardenadm-unmanaged-infra-dr
