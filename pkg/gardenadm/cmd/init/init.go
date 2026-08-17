@@ -110,9 +110,15 @@ func RunInitFlow(ctx context.Context, opts *Options, b *gardenadmbotanist.Garden
 			Fn:           flow.TaskFn(b.ApproveNodeAgentCertificateSigningRequest).RetryUntilTimeout(2*time.Second, time.Minute),
 			Dependencies: flow.NewTaskIDs(activateGardenerNodeAgent),
 		})
+		waitUntilControlPlaneNodeLabeled = g.Add(flow.Task{
+			Name:         "Waiting until the control plane Node is labeled",
+			Fn:           flow.TaskFn(b.WaitUntilControlPlaneNodeLabeled).RetryUntilTimeout(2*time.Second, time.Minute),
+			SkipIf:       podNetworkAvailable,
+			Dependencies: flow.NewTaskIDs(approveGardenerNodeAgentCSR),
+		})
 		reconcileGardenerResourceManager = g.AddGroup(
 			b.ReconcileGardenerResourceManagerTaskGroup(podNetworkAvailable, shootIsGarden).
-				WithDependencies(approveGardenerNodeAgentCSR),
+				WithDependencies(approveGardenerNodeAgentCSR, waitUntilControlPlaneNodeLabeled),
 		)
 		_                             = g.AddGroup(b.ReconcileSystemResourcesTaskGroup())
 		reconcileExtensionControllers = g.AddGroup(b.ReconcileExtensionControllersTaskGroup(podNetworkAvailable))
