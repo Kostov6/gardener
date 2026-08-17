@@ -94,6 +94,18 @@ var _ = Describe("Reconciler", func() {
 						}
 
 						Expect(podSpec.Tolerations).To(ContainElement(corev1.Toleration{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}))
+						Expect(podSpec.Affinity).To(Equal(&corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+									MatchExpressions: []corev1.NodeSelectorRequirement{{
+										Key:      "node-role.kubernetes.io/control-plane",
+										Operator: corev1.NodeSelectorOpExists,
+									}},
+								}},
+							},
+						}}))
+					} else {
+						Expect(podSpec.Affinity).To(BeNil())
 					}
 
 					Expect(podSpec.Tolerations).To(ContainElement(corev1.Toleration{Key: "node-role.kubernetes.io/control-plane", Operator: corev1.TolerationOpExists}))
