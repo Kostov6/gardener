@@ -5,9 +5,7 @@
 package unmanagedinfra
 
 import (
-	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,9 +18,9 @@ import (
 	"github.com/onsi/gomega/gexec"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
@@ -30,9 +28,11 @@ import (
 	"github.com/gardener/gardener/pkg/utils/kubernetes/health"
 )
 
-var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", Label("gardenadm", "unmanaged-infra", "dr"), func() {
+var _ = Describe("gardenadm unmanaged infrastructure control plane restoration test", Label("gardenadm", "unmanaged-infra", "restore"), func() {
 	Describe("Single-node control plane", Ordered, Label("single"), func() {
 		var (
+			log = logf.Log.WithName("test")
+
 			shootClientSet                   kubernetes.Interface
 			gardenClientSet                  kubernetes.Interface
 			shootClusterKubeconfigPathOnHost = filepath.Join("..", "..", "..", "dev-setup", "kubeconfigs", "self-hosted-shoot", "kubeconfig")
@@ -41,13 +41,12 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			shootName             = "root"
 			controlPlaneNamespace = "kube-system"
 
-			// gardenKubeconfigPathOnNode is where the virtual garden kubeconfig is copied on the recreated node, so that
-			// 'gardenadm discover existing' can download the Gardener configuration resources from the garden.
-			gardenKubeconfigPathOnNode = "/virtual-garden-kubeconfig"
 			// gardenKubeconfigPathOnHost is the virtual garden kubeconfig on the host; it is copied onto the node for discover.
 			gardenKubeconfigPathOnHost = filepath.Join("..", "..", "..", "dev-setup", "kubeconfigs", "virtual-garden", "kubeconfig")
-			// gardenKubeconfigPathOnMachine is where the garden kubeconfig is placed on the node to run the connect command.
-			gardenKubeconfigPathOnMachine = "/tmp/virtual-garden-kubeconfig"
+			// gardenKubeconfigPathOnNode is where the virtual garden kubeconfig is placed on the node, so that
+			// 'gardenadm discover existing' can download the Gardener configuration resources from the garden cluster and
+			// the connect command can be run against the garden.
+			gardenKubeconfigPathOnNode = "/virtual-garden-kubeconfig"
 			// configDirOnNode is the directory on the recreated node holding the discovered resources consumed by
 			// 'gardenadm restore -d'.
 			configDirOnNode = "/gardenadm/discover-output"
@@ -58,14 +57,7 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 		)
 
 		It("should create a client for the self-hosted shoot API server", func(ctx SpecContext) {
-			Eventually(ctx, func() error {
-				var err error
-				shootClientSet, err = kubernetes.NewClientFromFile("", shootClusterKubeconfigPathOnHost,
-					kubernetes.WithDisabledCachedClient(),
-					kubernetes.WithClientOptions(client.Options{Scheme: kubernetes.SeedScheme}),
-				)
-				return err
-			}).Should(Succeed())
+			initClientSet(ctx, &shootClientSet, shootClusterKubeconfigPathOnHost, client.Options{Scheme: kubernetes.SeedScheme})
 		}, SpecTimeout(time.Minute))
 
 		It("should ensure the self-hosted shoot is connected and a ShootState exists", func(ctx SpecContext) {
@@ -74,18 +66,11 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			// does nothing; otherwise it connects the shoot to the garden and drives ShootState creation, mirroring
 			// hack/dr-unmanaged-same-node.sh.
 			By("Create a client for the garden cluster")
-			Eventually(ctx, func() error {
-				var err error
-				gardenClientSet, err = kubernetes.NewClientFromFile("", gardenKubeconfigPathOnHost,
-					kubernetes.WithDisabledCachedClient(),
-					kubernetes.WithClientOptions(client.Options{Scheme: kubernetes.GardenScheme}),
-				)
-				return err
-			}).Should(Succeed())
+			initClientSet(ctx, &gardenClientSet, gardenKubeconfigPathOnHost, client.Options{Scheme: kubernetes.GardenScheme})
 
 			shootState := &gardencorev1beta1.ShootState{ObjectMeta: metav1.ObjectMeta{Name: shootName, Namespace: shootNamespace}}
 			if err := gardenClientSet.Client().Get(ctx, client.ObjectKeyFromObject(shootState), shootState); err == nil {
-				GinkgoWriter.Printf("ShootState %s/%s already exists, skipping connect\n", shootNamespace, shootName)
+				log.Info("ShootState already exists, skipping connect", "shootState", client.ObjectKeyFromObject(shootState))
 				return
 			}
 
@@ -93,12 +78,12 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			gardenKubeconfig, err := os.ReadFile(gardenKubeconfigPathOnHost) // #nosec: G304 -- variable points to a static file path
 			Expect(err).NotTo(HaveOccurred())
 			Eventually(ctx, func() error {
-				_, _, err := execute(ctx, 0, "sh", "-c", fmt.Sprintf("echo '%s' > %s", string(gardenKubeconfig), gardenKubeconfigPathOnMachine))
+				_, _, err := execute(ctx, 0, "sh", "-c", fmt.Sprintf("echo '%s' > %s", string(gardenKubeconfig), gardenKubeconfigPathOnNode))
 				return err
 			}).Should(Succeed())
 
 			By("Connect the self-hosted shoot to Gardener")
-			stdOut, _, err := execute(ctx, 0, "sh", "-c", fmt.Sprintf("KUBECONFIG=%s gardenadm token create --print-connect-command --shoot-namespace=%s --shoot-name=%s", gardenKubeconfigPathOnMachine, shootNamespace, shootName))
+			stdOut, _, err := execute(ctx, 0, "sh", "-c", fmt.Sprintf("KUBECONFIG=%s gardenadm token create --print-connect-command --shoot-namespace=%s --shoot-name=%s", gardenKubeconfigPathOnNode, shootNamespace, shootName))
 			Expect(err).NotTo(HaveOccurred())
 			connectCommand := strings.Split(strings.ReplaceAll(string(stdOut.Contents()), `"`, ``), " ")
 			stdOut, _, err = execute(ctx, 0, append(connectCommand, "--log-level=debug")...)
@@ -137,22 +122,26 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			}).Should(Succeed())
 		}, SpecTimeout(5*time.Minute))
 
+		It("should seed a workload ConfigMap whose survival proves the etcd data was restored", func(ctx SpecContext) {
+			// The default/experimental-configmap is asserted after recovery to prove the etcd data survived. We seed it
+			// here (mirroring hack/create-workload.sh) so the assertion always runs and a broken restore cannot pass
+			// silently. Creation is idempotent so re-runs against a connected environment do not fail.
+			experimentalConfigMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "experimental-configmap"},
+				Data:       map[string]string{"content": "experimenting with control plane disaster recovery"},
+			}
+			Eventually(ctx, func() error {
+				return client.IgnoreAlreadyExists(shootClientSet.Client().Create(ctx, experimentalConfigMap))
+			}).Should(Succeed())
+		}, SpecTimeout(time.Minute))
+
 		It("should trigger an etcd delta snapshot before the disaster", func(ctx SpecContext) {
 			// This mirrors triggerEtcdDeltaSnapshot in hack/dr-unmanaged-same-node.sh: etcd-backup-restore only takes
 			// deltas on a schedule, so we explicitly trigger a delta to flush the latest cluster state to the backup
 			// store before destroying the node. A delta (not a full) is triggered so the recovery path exercises
-			// full+delta replay, matching a real disaster. The /snapshot/delta request blocks until the delta is uploaded.
-			By("Find the etcd-main pod")
-			var etcdMainPod string
-			Eventually(ctx, func(g Gomega) {
-				podList := &corev1.PodList{}
-				g.Expect(shootClientSet.Client().List(ctx, podList, client.InNamespace(controlPlaneNamespace),
-					client.MatchingLabels{"app.kubernetes.io/name": "etcd-main"})).To(Succeed())
-				g.Expect(podList.Items).NotTo(BeEmpty())
-				etcdMainPod = podList.Items[0].Name
-			}).Should(Succeed())
-			GinkgoWriter.Printf("Triggering delta snapshot via etcd-main pod %q\n", etcdMainPod)
-
+			// full+delta replay, matching a real disaster. etcd-main runs as a static Pod on the host network, so the
+			// /snapshot/delta endpoint is reachable via localhost without a port-forward. The request blocks until the
+			// delta is uploaded.
 			By("Send an HTTP request for a delta snapshot")
 			_, _, err := execute(ctx, 0, "curl", "-sk", "--fail", "https://localhost:8080/snapshot/delta")
 			Expect(err).NotTo(HaveOccurred())
@@ -176,7 +165,7 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			Expect(cmd.Run()).To(Succeed())
 		}, SpecTimeout(5*time.Minute))
 
-		It("should discover the Gardener configuration resources from the garden", func(ctx SpecContext) {
+		It("should discover the Gardener configuration resources from the garden cluster", func(ctx SpecContext) {
 			// This mirrors hack/dr-unmanaged-same-node.sh: the virtual garden survives the node disaster, so we copy its
 			// kubeconfig onto the recreated node and run 'gardenadm discover existing' to download the Gardener
 			// configuration resources (Shoot, ShootState, BackupBucket, BackupEntry, CloudProfile, ...) that
@@ -200,10 +189,13 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			_, _, err = execute(ctx, 0, "rm", "-f", configDirOnNode+"/lease-self-hosted-shoot-"+shootName+".yaml")
 			Expect(err).NotTo(HaveOccurred())
 
-			By("List the discovered resources on the node")
-			stdOut, _, err := execute(ctx, 0, "ls", "-la", configDirOnNode)
+			By("Verify 'gardenadm discover existing' exported the resources needed for restore")
+			stdOut, _, err := execute(ctx, 0, "ls", configDirOnNode)
 			Expect(err).NotTo(HaveOccurred())
-			GinkgoWriter.Printf("Discovered resources in %s:\n%s", configDirOnNode, string(stdOut.Contents()))
+			discoveredFiles := string(stdOut.Contents())
+			for _, kind := range []string{"backupbucket", "backupentry", "shoot", "shootstate"} {
+				Expect(discoveredFiles).To(ContainSubstring(kind), "'gardenadm discover existing' should have exported a %s resource into %s", kind, configDirOnNode)
+			}
 		}, SpecTimeout(2*time.Minute))
 
 		It("should copy the local etcd backup onto the recreated node", func(ctx SpecContext) {
@@ -225,7 +217,7 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 				return nil
 			})).To(Succeed())
 			Expect(backupDataPathOnHost).NotTo(BeEmpty(), "expected to find an etcd-main v2 backup directory under %s", localBackupBucketsOnHost)
-			GinkgoWriter.Printf("Found etcd backup data on host at %q\n", backupDataPathOnHost)
+			log.Info("Found etcd backup data on host", "path", backupDataPathOnHost)
 
 			By("Copy the local backup buckets onto the recreated node")
 			_, _, err := dockerCommand(ctx, "cp", localBackupBucketsOnHost, machineContainerName(0)+":/local-backupbuckets")
@@ -236,7 +228,7 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			relToBackupBuckets, err := filepath.Rel(localBackupBucketsOnHost, backupDataPathOnHost)
 			Expect(err).NotTo(HaveOccurred())
 			backupDataPathOnNode = filepath.Join("/local-backupbuckets", relToBackupBuckets)
-			GinkgoWriter.Printf("Backup data path on node: %q\n", backupDataPathOnNode)
+			log.Info("Computed backup data path on node", "path", backupDataPathOnNode)
 		}, SpecTimeout(2*time.Minute))
 
 		It("should restore the control plane node", func(ctx SpecContext) {
@@ -252,7 +244,7 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 				"--log-level=debug",
 			)
 			Expect(err).NotTo(HaveOccurred())
-			GinkgoWriter.Printf("gardenadm restore output:\n%s", string(stdOut.Contents()))
+			log.Info("gardenadm restore finished", "output", string(stdOut.Contents()))
 		}, SpecTimeout(10*time.Minute))
 
 		It("should observe that all nodes are ready", func(ctx SpecContext) {
@@ -260,10 +252,6 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 				nodeList := &corev1.NodeList{}
 				g.Expect(shootClientSet.Client().List(ctx, nodeList)).To(Succeed())
 				g.Expect(nodeList.Items).NotTo(BeEmpty())
-
-				for _, node := range nodeList.Items {
-					GinkgoWriter.Printf("Node %q: %v\n", node.Name, health.CheckNode(&node))
-				}
 
 				for _, node := range nodeList.Items {
 					g.Expect(health.CheckNode(&node)).To(Succeed(), "node %q should be healthy", node.Name)
@@ -276,17 +264,12 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			// ConfigMap is still present with its original content) and that the Shoot's identity (UID) was preserved
 			// across the disaster (the garden's Shoot .status.uid matches the statusUID in the shoot's shoot-info ConfigMap).
 
-			// The default/experimental-configmap is only seeded by hack/create-workload.sh, which is not run by this test.
-			// Verify it only if present, so the spec mirrors dr-verify-restore.sh without failing when no workload was seeded.
-			By("Verify the default/experimental-configmap survived recovery (if it was seeded)")
+			By("Verify the default/experimental-configmap survived recovery")
 			experimentalConfigMap := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "experimental-configmap"}}
-			if err := shootClientSet.Client().Get(ctx, client.ObjectKeyFromObject(experimentalConfigMap), experimentalConfigMap); err != nil {
-				Expect(apierrors.IsNotFound(err)).To(BeTrue(), "unexpected error getting default/experimental-configmap")
-				GinkgoWriter.Println("default/experimental-configmap not present (workload was not seeded), skipping content check")
-			} else {
-				Expect(experimentalConfigMap.Data).To(HaveKeyWithValue("content", "experimenting with control plane disaster recovery"),
-					"default/experimental-configmap should have survived recovery with its original content")
-			}
+			Expect(shootClientSet.Client().Get(ctx, client.ObjectKeyFromObject(experimentalConfigMap), experimentalConfigMap)).To(Succeed(),
+				"default/experimental-configmap should have survived recovery")
+			Expect(experimentalConfigMap.Data).To(HaveKeyWithValue("content", "experimenting with control plane disaster recovery"),
+				"default/experimental-configmap should have survived recovery with its original content")
 
 			By("Read the Shoot UID from the garden cluster")
 			shoot := &gardencorev1beta1.Shoot{ObjectMeta: metav1.ObjectMeta{Name: shootName, Namespace: shootNamespace}}
@@ -302,18 +285,7 @@ var _ = Describe("gardenadm unmanaged infrastructure disaster recovery tests", L
 			Expect(shootInfo.Data).To(HaveKeyWithValue("statusUID", gardenUID),
 				"the shoot-info statusUID should match the garden Shoot .status.uid after recovery")
 
-			GinkgoWriter.Printf("🎉 Success! The control plane Node was successfully restored (Shoot UID %s preserved)\n", gardenUID)
+			log.Info("The control plane Node was successfully restored", "shootUID", gardenUID)
 		}, SpecTimeout(5*time.Minute))
 	})
 })
-
-// dockerCommand runs a top-level `docker` command (e.g. stop/rm) on the host and returns its stdout/stderr buffers.
-func dockerCommand(ctx context.Context, args ...string) (*gbytes.Buffer, *gbytes.Buffer, error) {
-	var stdOutBuffer, stdErrBuffer = gbytes.NewBuffer(), gbytes.NewBuffer()
-
-	cmd := exec.CommandContext(ctx, "docker", args...) // #nosec G204 -- Used for e2e tests only.
-	cmd.Stdout = io.MultiWriter(stdOutBuffer, gexec.NewPrefixedWriter("[out] ", GinkgoWriter))
-	cmd.Stderr = io.MultiWriter(stdErrBuffer, gexec.NewPrefixedWriter("[err] ", GinkgoWriter))
-
-	return stdOutBuffer, stdErrBuffer, cmd.Run()
-}

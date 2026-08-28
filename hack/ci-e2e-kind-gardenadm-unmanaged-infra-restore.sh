@@ -28,4 +28,4 @@ make gardenadm-up SCENARIO=connect-kind
 
 make gind-up GARDENADM_INIT_FLAGS="--log-level=debug" SCENARIO=join
 
-make test-e2e-local-gardenadm-unmanaged-infra-dr
+make test-e2e-local-gardenadm-unmanaged-infra-restore
