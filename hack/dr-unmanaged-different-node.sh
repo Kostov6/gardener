@@ -73,11 +73,14 @@ echo "> Connecting the Shoot cluster to Gardener..."
 CONNECT_COMMAND=$(KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" ./bin/gardenadm token create --print-connect-command --shoot-namespace=garden --shoot-name=root | tr -d '"')
 docker exec -ti gind-machine-0 $(echo $CONNECT_COMMAND)
 
-echo "> Obtaining a ShootState resource for the Shoot..."
-# Patching the Shoot status with a successful last operation is required to allow the shootstate-controller to create a ShootState for the Shoot
-echo "> Patching the Shoot status with a successful create lastOperation..."
-kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden patch shoot root --subresource status --type=merge --patch='{"status":{"lastOperation":{"type": "Create","state": "Succeeded"}}}'
+echo "> Waiting until the Shoot is reconciled..."
+# TODO: Wait for the ControlPlaneHealthy, ObservabilityComponentsHealthy and SystemComponentsHealthy conditions as well when they are healthy.
+# - ControlPlaneHealthy fails with: 'Etcd extension resource "etcd-events" is unhealthy: etcd "etcd-events" is not ready yet'
+# - ObservabilityComponentsHealthy fails with: 'Missing required deployments: [kube-state-metrics]'
+# - SystemComponentsHealthy fails with: 'Deployment "kube-system/calico-typha-deploy" is unhealthy: condition "Progressing" has invalid status False (expected True) due to ProgressDeadlineExceeded: <...>''
+KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" NAMESPACE=garden ./hack/usage/wait-for.sh shoot root GardenletReady APIServerAvailable EveryNodeReady BackupBucketsReady
 
+echo "> Obtaining a ShootState resource for the Shoot..."
 # Rolling out the gardenlet Deployment is required to trigger the shootstate-controller to create a ShootState for the Shoot
 echo "> Rolling out the kube-system/gardenlet Deployment to trigger ShootState creation..."
 targetMachine
