@@ -125,13 +125,20 @@ func (b *Botanist) staticControlPlaneComponents(useBootstrapEtcd bool, bootstrap
 func (b *Botanist) DeployStaticControlPlaneDeployments(ctx context.Context, useBootstrapEtcd bool, bootstrapEtcdBackupPath string) error {
 	// Explicitly set the gardener-node-agent reconciliation delay to 0 for gind-machine-3 so it reconciles the
 	// OperatingSystemConfig immediately instead of waiting for the jitter period assigned by the node-agent-reconciliation-delay controller.
+	// The annotation is only set if the node already exists.
 	//
 	// TODO(dimitar-kostadinov): Find out how to fix this hack/workaround in the future.
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "gind-machine-3"}}
-	patch := client.MergeFrom(node.DeepCopy())
-	metav1.SetMetaDataAnnotation(&node.ObjectMeta, v1beta1constants.AnnotationNodeAgentReconciliationDelay, "0s")
-	if err := b.ShootClientSet.Client().Patch(ctx, node, patch); err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed setting reconciliation delay annotation on node %q: %w", node.Name, err)
+	if err := b.ShootClientSet.Client().Get(ctx, client.ObjectKeyFromObject(node), node); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed reading node %q: %w", node.Name, err)
+		}
+	} else {
+		patch := client.MergeFrom(node.DeepCopy())
+		metav1.SetMetaDataAnnotation(&node.ObjectMeta, v1beta1constants.AnnotationNodeAgentReconciliationDelay, "0s")
+		if err := b.ShootClientSet.Client().Patch(ctx, node, patch); err != nil {
+			return fmt.Errorf("failed setting reconciliation delay annotation on node %q: %w", node.Name, err)
+		}
 	}
 
 	if err := b.DeployControlPlaneDeployments(ctx, useBootstrapEtcd, bootstrapEtcdBackupPath); err != nil {
