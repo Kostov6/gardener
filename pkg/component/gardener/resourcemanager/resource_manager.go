@@ -864,12 +864,13 @@ func (r *resourceManager) ensureDeployment(ctx context.Context, configMap *corev
 		})
 	}
 
-	if r.values.BootstrapControlPlaneNode {
-		tolerations = append(tolerations,
-			corev1.Toleration{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
-			corev1.Toleration{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute},
-		)
-		// Pin to the control plane node: in bootstrap mode the pod talks to the API server via 'localhost', which only works there.
+	// Pin gardener-resource-manager to a control plane node when:
+	//   - it bootstraps a control plane node ('BootstrapControlPlaneNode'): it talks to the kube-apiserver via
+	//     'localhost', which only works on the control plane node itself
+	//   - it runs as the self-hosted shoot GRM (in the shoot's own kube-system namespace): it fronts the
+	//     gardener-node-agent authorizer webhook, which must stay reachable from the control plane to avoid
+	//     cross-node network paths that can freeze node-agent leases.
+	if r.values.BootstrapControlPlaneNode || r.deployedInSelfHostedShoot() {
 		affinity = &corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
 				NodeSelectorTerms: []corev1.NodeSelectorTerm{{
@@ -880,6 +881,13 @@ func (r *resourceManager) ensureDeployment(ctx context.Context, configMap *corev
 				}},
 			},
 		}}
+	}
+	if r.values.BootstrapControlPlaneNode {
+		tolerations = append(tolerations,
+			corev1.Toleration{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+			corev1.Toleration{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute},
+		)
+
 		// If 'BootstrapControlPlaneNode', there is typically no CoreDNS running yet, i.e, we cannot rely on the
 		// standard 'kubernetes.default.svc' DNS name but have to explicitly set it to 'localhost'.
 		env = append(env, corev1.EnvVar{Name: "KUBERNETES_SERVICE_HOST", Value: "localhost"})
@@ -2221,4 +2229,11 @@ func (r *resourceManager) defaultPortOrBootstrapControlPlaneNodePort(defaultPort
 
 func (r *resourceManager) responsibleForHostedShootOrVirtualGarden() bool {
 	return r.values.ResponsibilityMode == ForShootOrVirtualGarden && r.namespace != metav1.NamespaceSystem
+}
+
+// deployedInSelfHostedShoot returns true if the gardener-resource-manager runs in the self-hosted shoot's own
+// kube-system namespace (as opposed to a seed or garden runtime cluster). Only in this case does the cluster have
+// control plane nodes labeled with LabelNodeRoleControlPlane, so only then may the deployment be pinned to them.
+func (r *resourceManager) deployedInSelfHostedShoot() bool {
+	return r.values.ResponsibilityMode == ForShootOrVirtualGarden && r.namespace == metav1.NamespaceSystem
 }
