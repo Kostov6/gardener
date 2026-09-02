@@ -5,6 +5,7 @@
 package unmanagedinfra
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -68,6 +69,11 @@ var _ = Describe("gardenadm unmanaged infrastructure control plane restoration t
 			By("Create a client for the garden cluster")
 			initClientSet(ctx, &gardenClientSet, gardenKubeconfigPathOnHost, client.Options{Scheme: kubernetes.GardenScheme})
 
+			// On a "recover again" run the pre-disaster setup is skipped: the ShootState from a prior run is reused.
+			if isRecoverAgainRun(ctx) {
+				Skip("control plane node was recreated by a prior run, reusing existing connection and ShootState")
+			}
+
 			shootState := &gardencorev1beta1.ShootState{ObjectMeta: metav1.ObjectMeta{Name: shootName, Namespace: shootNamespace}}
 			if err := gardenClientSet.Client().Get(ctx, client.ObjectKeyFromObject(shootState), shootState); err == nil {
 				log.Info("ShootState already exists, skipping connect", "shootState", client.ObjectKeyFromObject(shootState))
@@ -126,6 +132,11 @@ var _ = Describe("gardenadm unmanaged infrastructure control plane restoration t
 			// The default/experimental-configmap is asserted after recovery to prove the etcd data survived. We seed it
 			// here (mirroring hack/create-workload.sh) so the assertion always runs and a broken restore cannot pass
 			// silently. Creation is idempotent so re-runs against a connected environment do not fail.
+			// On a "recover again" run this is skipped: the ConfigMap seeded by a prior run is part of the reused backup.
+			if isRecoverAgainRun(ctx) {
+				Skip("control plane node was recreated by a prior run, reusing the workload ConfigMap from the existing backup")
+			}
+
 			experimentalConfigMap := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "experimental-configmap"},
 				Data:       map[string]string{"content": "experimenting with control plane disaster recovery"},
@@ -142,6 +153,11 @@ var _ = Describe("gardenadm unmanaged infrastructure control plane restoration t
 			// full+delta replay, matching a real disaster. etcd-main runs as a static Pod on the host network, so the
 			// /snapshot/delta endpoint is reachable via localhost without a port-forward. The request blocks until the
 			// delta is uploaded.
+			// On a "recover again" run this is skipped: the backup taken by a prior run is reused.
+			if isRecoverAgainRun(ctx) {
+				Skip("control plane node was recreated by a prior run, reusing the existing etcd backup")
+			}
+
 			By("Send an HTTP request for a delta snapshot")
 			_, _, err := execute(ctx, 0, "curl", "-sk", "--fail", "https://localhost:8080/snapshot/delta")
 			Expect(err).NotTo(HaveOccurred())
@@ -289,3 +305,30 @@ var _ = Describe("gardenadm unmanaged infrastructure control plane restoration t
 		}, SpecTimeout(5*time.Minute))
 	})
 })
+
+// containerStartedAt returns the container's start time via `docker inspect -f '{{.State.StartedAt}}'`.
+func containerStartedAt(ctx context.Context, containerName string) (time.Time, error) {
+	stdOut, _, err := dockerCommand(ctx, "inspect", "-f", "{{.State.StartedAt}}", containerName)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Parse(time.RFC3339Nano, strings.TrimSpace(string(stdOut.Contents())))
+}
+
+// isRecoverAgainRun detects a "recover again" run (i.e. the pre-disaster setup should be skipped) by comparing the
+// control plane node container's start time to the worker node's. On a fresh full run `gind-up SCENARIO=machines`
+// starts the control plane node (machine-0) before the worker (machine-1), so the control plane node is not newer. On
+// a recover-again run the control plane node was destroyed and recreated by a previous run's disaster spec while the
+// worker survived, so it started strictly after the worker. This uses the Docker layer (always available on the host)
+// rather than the shoot API server, which may be down before restore - especially after a failed prior restore.
+func isRecoverAgainRun(ctx context.Context) bool {
+	controlPlaneStartedAt, err := containerStartedAt(ctx, machineContainerName(0))
+	Expect(err).NotTo(HaveOccurred(), "failed inspecting control plane node container start time")
+	workerStartedAt, err := containerStartedAt(ctx, machineContainerName(1))
+	Expect(err).NotTo(HaveOccurred(), "failed inspecting worker node container start time")
+	// The control plane node is only newer than the worker if it was recreated after the initial joint bring-up.
+	recreated := controlPlaneStartedAt.After(workerStartedAt.Add(time.Second * 30))
+	GinkgoWriter.Printf("Control plane node started at %s, worker node at %s -> recover-again=%t\n",
+		controlPlaneStartedAt.Format(time.RFC3339), workerStartedAt.Format(time.RFC3339), recreated)
+	return recreated
+}
