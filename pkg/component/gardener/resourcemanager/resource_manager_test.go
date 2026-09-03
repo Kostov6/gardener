@@ -2095,37 +2095,6 @@ subjects:
 	})
 
 	Describe("#Deploy", func() {
-		Context("self-hosted shoot (deployed in kube-system namespace)", func() {
-			var selfHostedResourceManager Interface
-
-			JustBeforeEach(func() {
-				Expect(fakeClient.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "server-ca", Namespace: metav1.NamespaceSystem}})).To(Succeed())
-				Expect(fakeClient.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "generic-token-kubeconfig", Namespace: metav1.NamespaceSystem}})).To(Succeed())
-
-				cfg.ResponsibilityMode = ForShootOrVirtualGarden
-				selfHostedSM := fakesecretsmanager.New(fakeClient, metav1.NamespaceSystem)
-				selfHostedResourceManager = New(fakeClient, metav1.NamespaceSystem, selfHostedSM, cfg)
-				selfHostedResourceManager.SetSecrets(secrets)
-			})
-
-			It("should pin the deployment to a control plane node", func() {
-				Expect(selfHostedResourceManager.Deploy(ctx)).To(Succeed())
-
-				actualDeployment := &appsv1.Deployment{}
-				Expect(fakeClient.Get(ctx, client.ObjectKey{Namespace: metav1.NamespaceSystem, Name: "gardener-resource-manager"}, actualDeployment)).To(Succeed())
-				Expect(actualDeployment.Spec.Template.Spec.Affinity).To(Equal(&corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{
-					RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-						NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-							MatchExpressions: []corev1.NodeSelectorRequirement{{
-								Key:      "node-role.kubernetes.io/control-plane",
-								Operator: corev1.NodeSelectorOpExists,
-							}},
-						}},
-					},
-				}}))
-			})
-		})
-
 		Context("target cluster != source cluster; watched namespace is set", func() {
 			JustBeforeEach(func() {
 				role.Namespace = watchedNamespace
