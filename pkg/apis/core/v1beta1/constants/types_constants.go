@@ -845,10 +845,6 @@ const (
 	LabelWorkerPoolSystemComponents = "worker.gardener.cloud/system-components"
 	// LabelWorkerPoolGardenerNodeAgentSecretName is the name of the secret used by the gardener node agent
 	LabelWorkerPoolGardenerNodeAgentSecretName = "worker.gardener.cloud/gardener-node-agent-secret-name"
-	// LabelNodeRoleControlPlane is a constant for the standard label that is set on control plane nodes. In the
-	// self-hosted shoot topology, the gardener-node-agent applies it to the node running the kube-apiserver static pod.
-	LabelNodeRoleControlPlane = "node-role.kubernetes.io/control-plane"
-
 	// LabelNodeRoleControlPlane is a label key marking a node as a control-plane node.
 	LabelNodeRoleControlPlane = "node-role.kubernetes.io/control-plane"
 

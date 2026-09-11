@@ -714,16 +714,10 @@ func (r *Reconciler) MutateSpecForSelfHostedShootExtensions(obj runtime.Object) 
 			kubernetesutils.InjectKubernetesServiceHostEnv(podSpec.Containers, "localhost")
 
 			// Pin to the control plane node: in bootstrap mode the pods talk to the API server via 'localhost', which only works there.
-			podSpec.Affinity = &corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-					NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-						MatchExpressions: []corev1.NodeSelectorRequirement{{
-							Key:      v1beta1constants.LabelNodeRoleControlPlane,
-							Operator: corev1.NodeSelectorOpExists,
-						}},
-					}},
-				},
-			}}
+			if podSpec.NodeSelector == nil {
+				podSpec.NodeSelector = map[string]string{}
+			}
+			podSpec.NodeSelector[v1beta1constants.LabelNodeRoleControlPlane] = ""
 
 			// extensions must even start on unready nodes in order to deploy the CNI plugin (nodes only become ready
 			// when networking is available)
