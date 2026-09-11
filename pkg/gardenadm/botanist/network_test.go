@@ -135,7 +135,7 @@ var _ = Describe("Network", func() {
 		})
 	})
 
-	Describe("#WaitUntilControlPlaneNodeLabeled", func() {
+	Describe("#CheckControlPlaneNodeLabeled", func() {
 		var (
 			hostName = "foo"
 
@@ -153,20 +153,20 @@ var _ = Describe("Network", func() {
 		})
 
 		It("should return an error because the Node does not exist yet", func() {
-			Expect(b.WaitUntilControlPlaneNodeLabeled(ctx)).To(MatchError(ContainSubstring("was not created yet")))
+			Expect(b.CheckControlPlaneNodeLabeled(ctx)).To(MatchError(ContainSubstring("was not created yet")))
 		})
 
 		It("should return an error because the Node does not carry the control-plane label yet", func() {
 			Expect(b.SeedClientSet.Client().Create(ctx, node)).To(Succeed())
 
-			Expect(b.WaitUntilControlPlaneNodeLabeled(ctx)).To(MatchError(ContainSubstring("does not yet carry the \"node-role.kubernetes.io/control-plane\" label")))
+			Expect(b.CheckControlPlaneNodeLabeled(ctx)).To(MatchError(ContainSubstring("does not yet carry the \"node-role.kubernetes.io/control-plane\" label")))
 		})
 
 		It("should succeed because the Node carries the control-plane label", func() {
 			node.Labels["node-role.kubernetes.io/control-plane"] = ""
 			Expect(b.SeedClientSet.Client().Create(ctx, node)).To(Succeed())
 
-			Expect(b.WaitUntilControlPlaneNodeLabeled(ctx)).To(Succeed())
+			Expect(b.CheckControlPlaneNodeLabeled(ctx)).To(Succeed())
 		})
 	})
 

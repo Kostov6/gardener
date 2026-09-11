@@ -43,12 +43,13 @@ func (b *GardenadmBotanist) IsPodNetworkAvailable(ctx context.Context) (bool, er
 	return false, nil
 }
 
-// WaitUntilControlPlaneNodeLabeled waits until the control plane Node (identified by the hostname this command runs on)
+// CheckControlPlaneNodeLabeled checks whether the control plane Node (identified by the hostname this command runs on)
 // carries the `node-role.kubernetes.io/control-plane` label. The gardener-node-agent applies this label asynchronously
 // once it detects the kube-apiserver static pod manifest. Bootstrap components (e.g. gardener-resource-manager) use a
-// required node affinity on this label to pin themselves to the control plane node, so they must only be deployed once
-// the label is present - otherwise they would stay Pending.
-func (b *GardenadmBotanist) WaitUntilControlPlaneNodeLabeled(ctx context.Context) error {
+// node selector on this label to pin themselves to the control plane node, so they must only be deployed once
+// the label is present - otherwise they would stay Pending. It returns an error until the label is present; callers are
+// expected to retry (see the init flow).
+func (b *GardenadmBotanist) CheckControlPlaneNodeLabeled(ctx context.Context) error {
 	node, err := nodeagent.FetchNodeByHostName(ctx, b.SeedClientSet.Client(), b.HostName)
 	if err != nil {
 		return fmt.Errorf("failed fetching node object by hostname %q: %w", b.HostName, err)

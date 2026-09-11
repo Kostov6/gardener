@@ -839,7 +839,6 @@ func (r *resourceManager) ensureDeployment(ctx context.Context, configMap *corev
 
 	var (
 		nodeSelectors     map[string]string
-		affinity          *corev1.Affinity
 		tolerations       []corev1.Toleration
 		env               []corev1.EnvVar
 		replicas          = r.values.Replicas
@@ -879,16 +878,10 @@ func (r *resourceManager) ensureDeployment(ctx context.Context, configMap *corev
 			corev1.Toleration{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute},
 		)
 		// Pin to the control plane node: in bootstrap mode the pod talks to the API server via 'localhost', which only works there.
-		affinity = &corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-				NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-					MatchExpressions: []corev1.NodeSelectorRequirement{{
-						Key:      v1beta1constants.LabelNodeRoleControlPlane,
-						Operator: corev1.NodeSelectorOpExists,
-					}},
-				}},
-			},
-		}}
+		if nodeSelectors == nil {
+			nodeSelectors = map[string]string{}
+		}
+		nodeSelectors[v1beta1constants.LabelNodeRoleControlPlane] = ""
 		// If 'BootstrapControlPlaneNode', there is typically no CoreDNS running yet, i.e, we cannot rely on the
 		// standard 'kubernetes.default.svc' DNS name but have to explicitly set it to 'localhost'.
 		env = append(env, corev1.EnvVar{Name: "KUBERNETES_SERVICE_HOST", Value: "localhost"})
@@ -1000,7 +993,6 @@ func (r *resourceManager) ensureDeployment(ctx context.Context, configMap *corev
 					},
 				},
 				NodeSelector: nodeSelectors,
-				Affinity:     affinity,
 				Tolerations:  tolerations,
 				Volumes: []corev1.Volume{
 					{
