@@ -106,6 +106,72 @@ spec:`)
 	})
 
 	Describe("#Validate", func() {
+		When("recover flag validation", func() {
+			It("should reject --recover with --bootstrap", func() {
+				options.Recover = true
+				options.Bootstrap = true
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover cannot be combined with --bootstrap")))
+			})
+
+			It("should reject --recover when ShootState manifest is missing", func() {
+				Expect(os.Remove(filepath.Join(configDir, "state.yaml"))).To(Succeed())
+				options.Recover = true
+				options.PriorNodeName = "node-01"
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover requires a ShootState resource in the config directory, but none was found")))
+			})
+
+			It("should reject --recover when Shoot .status.uid is empty", func() {
+				createShootManifest("test-credentials", nil, true, "")
+				options.Recover = true
+				options.PriorNodeName = "node-01"
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover requires the Shoot manifest in the config directory to have .status.uid set")))
+			})
+
+			It("should reject --recover without --prior-node-name", func() {
+				options.Recover = true
+				options.SecretFile = "secret.yaml"
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover must be combined with --prior-node-name")))
+			})
+
+			It("should accept --recover when all prerequisites are met", func() {
+				options.Recover = true
+				options.PriorNodeName = "node-01"
+				options.BackupDataPath = "/some/path/to/backup"
+
+				Expect(options.Validate()).To(Succeed())
+			})
+
+			It("should reject --recover without --backup-data-path", func() {
+				options.Recover = true
+				options.PriorNodeName = "node-01"
+				options.BackupDataPath = ""
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--recover must be combined with --backup-data-path")))
+			})
+		})
+
+		When("prior-node-name flag validation", func() {
+			It("should reject --prior-node-name without --recover", func() {
+				options.Recover = false
+				options.PriorNodeName = "node-01"
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--prior-node-name must be combined with --recover")))
+			})
+		})
+
+		When("backup-data-path flag validation", func() {
+			It("should reject --backup-data-path without --recover", func() {
+				options.Recover = false
+				options.BackupDataPath = "/some/path/to/backup"
+
+				Expect(options.Validate()).To(MatchError(ContainSubstring("--backup-data-path must be combined with --recover")))
+			})
+		})
+
 		It("should fail because config dir path is not set", func() {
 			options.ConfigDir = ""
 			Expect(options.Validate()).To(MatchError(ContainSubstring("must provide a path to a config directory")))

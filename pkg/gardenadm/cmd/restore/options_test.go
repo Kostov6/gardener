@@ -251,6 +251,7 @@ spec:
 
 			Expect(options.Validate()).To(MatchError(ContainSubstring("zone can't be configured for shoot with managed infrastructure")))
 		})
+		})
 	})
 
 	Describe("#Complete", func() {

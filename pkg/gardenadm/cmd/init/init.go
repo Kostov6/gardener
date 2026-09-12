@@ -50,7 +50,7 @@ gardenadm init --config-dir /path/to/manifests --zone zone-a`,
 				return err
 			}
 
-			return run(cmd.Context(), opts)
+			return RunInit(cmd.Context(), opts)
 		},
 	}
 

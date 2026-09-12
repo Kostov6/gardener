@@ -88,11 +88,11 @@ kubectl -n kube-system rollout restart deployment/gardenlet
 echo "> Waiting until the kube-system/gardenlet Deployment successfully rolled out..."
 kubectl -n kube-system rollout status deployment/gardenlet
 echo "> Waiting until the ShootState is created..."
-for i in {1..6}; do
+for i in {1..18}; do
   if kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get shootstate root &> /dev/null; then
     break
   fi
-  echo "> Attempt $i/6: Waiting until garden/root ShootState is created. Sleeping 10s..."
+  echo "> Attempt $i/18: Waiting until garden/root ShootState is created. Sleeping 10s..."
   sleep 10
 done
 

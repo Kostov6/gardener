@@ -295,6 +295,14 @@ func (e *etcdDeployer) emptyStatefulSet() *appsv1.StatefulSet {
 	return &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: Name(e.values.Role), Namespace: e.namespace}}
 }
 
+func (e *etcdDeployer) emptyEtcdConfigMap() *corev1.ConfigMap {
+	return &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: e.etcdConfigMapName(), Namespace: e.namespace}}
+}
+
+func (e *etcdDeployer) etcdConfigMapName() string {
+	return Name(e.values.Role) + "-config"
+}
+
 func (e *etcdDeployer) labels() map[string]string {
 	return map[string]string{
 		v1beta1constants.LabelApp:   "etcd",
