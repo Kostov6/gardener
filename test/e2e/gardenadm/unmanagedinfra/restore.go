@@ -114,20 +114,6 @@ var _ = Describe("gardenadm unmanaged infrastructure control plane restoration t
 				}
 			}).Should(Succeed())
 
-			By("Roll out the gardenlet Deployment to trigger ShootState creation")
-			gardenletDeployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: controlPlaneNamespace, Name: "gardenlet"}}
-			Eventually(ctx, func(g Gomega) {
-				g.Expect(shootClientSet.Client().Get(ctx, client.ObjectKeyFromObject(gardenletDeployment), gardenletDeployment)).To(Succeed())
-				patch := client.MergeFrom(gardenletDeployment.DeepCopy())
-				metav1.SetMetaDataAnnotation(&gardenletDeployment.Spec.Template.ObjectMeta, "kubectl.kubernetes.io/restartedAt", time.Now().Format(time.RFC3339))
-				g.Expect(shootClientSet.Client().Patch(ctx, gardenletDeployment, patch)).To(Succeed())
-			}).Should(Succeed())
-			Eventually(ctx, func(g Gomega) {
-				done, err := kubernetesutils.HasDeploymentRolloutCompleted(ctx, shootClientSet.Client(), controlPlaneNamespace, "gardenlet")
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(done).To(BeTrue())
-			}).Should(Succeed())
-
 			By("Wait until the ShootState is created")
 			Eventually(ctx, func() error {
 				return gardenClientSet.Client().Get(ctx, client.ObjectKeyFromObject(shootState), shootState)

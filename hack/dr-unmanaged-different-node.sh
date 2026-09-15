@@ -74,10 +74,6 @@ CONNECT_COMMAND=$(KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" ./bin/gardenadm token 
 docker exec -ti gind-machine-0 $(echo $CONNECT_COMMAND)
 
 echo "> Waiting until the Shoot is reconciled..."
-# TODO: Wait for the ControlPlaneHealthy, ObservabilityComponentsHealthy and SystemComponentsHealthy conditions as well when they are healthy.
-# - ControlPlaneHealthy fails with: 'Etcd extension resource "etcd-events" is unhealthy: etcd "etcd-events" is not ready yet'
-# - ObservabilityComponentsHealthy fails with: 'Missing required deployments: [kube-state-metrics]'
-# - SystemComponentsHealthy fails with: 'Deployment "kube-system/calico-typha-deploy" is unhealthy: condition "Progressing" has invalid status False (expected True) due to ProgressDeadlineExceeded: <...>''
 KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" NAMESPACE=garden ./hack/usage/wait-for.sh shoot root GardenletReady APIServerAvailable EveryNodeReady BackupBucketsReady
 
 echo "> Waiting until the ShootState is created..."
@@ -85,13 +81,13 @@ for i in {1..6}; do
   if kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get shootstate root &> /dev/null; then
     break
   fi
-  if [[ $i -eq 6 ]]; then
-    echo "ERROR: garden/root ShootState was not created in time." >&2
-    exit 1
-  fi
-  echo "> Attempt $i/18: Waiting until garden/root ShootState is created. Sleeping 10s..."
+  echo "> Attempt $i/6: Waiting until garden/root ShootState is created. Sleeping 10s..."
   sleep 10
 done
+if ! kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get shootstate root &> /dev/null; then
+  echo "ERROR: garden/root ShootState was not created in time." >&2
+  exit 1
+fi
 
 echo "> Triggering an etcd delta snapshot before simulating the disaster..."
 triggerEtcdDeltaSnapshot

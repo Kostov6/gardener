@@ -88,7 +88,7 @@ func (r *Reconciler) ShootCreationSucceededPredicate() predicate.Predicate {
 				return false
 			}
 
-			return predicateutils.ShootCreationJustSucceeded(oldShoot.Status.LastOperation, newShoot.Status.LastOperation)
+			return predicateutils.CreationJustSucceeded(oldShoot.Status.LastOperation, newShoot.Status.LastOperation)
 		},
 	}
 }
