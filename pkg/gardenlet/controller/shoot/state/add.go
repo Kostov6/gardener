@@ -19,6 +19,7 @@ import (
 
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	"github.com/gardener/gardener/pkg/controllerutils"
+	predicateutils "github.com/gardener/gardener/pkg/controllerutils/predicate"
 )
 
 // ControllerName is the name of this controller.
@@ -53,7 +54,7 @@ func (r *Reconciler) AddToManager(mgr manager.Manager, gardenCluster, seedCluste
 }
 
 // SeedNameChangedPredicate returns a predicate which returns true for all events except updates - here it only returns
-// true when the seed name changed.
+// true when the seed name changed or the shoot's initial creation reconciliation finished successfully.
 func (r *Reconciler) SeedNameChangedPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -67,7 +68,8 @@ func (r *Reconciler) SeedNameChangedPredicate() predicate.Predicate {
 				return false
 			}
 
-			return ptr.Deref(shoot.Spec.SeedName, "") != ptr.Deref(oldShoot.Spec.SeedName, "")
+			return ptr.Deref(shoot.Spec.SeedName, "") != ptr.Deref(oldShoot.Spec.SeedName, "") ||
+				predicateutils.ShootCreationSucceeded(oldShoot.Status.LastOperation, shoot.Status.LastOperation)
 		},
 	}
 }

@@ -186,6 +186,17 @@ func ReconciliationFinishedSuccessfully(oldLastOperation, newLastOperation *gard
 		newLastOperation.State == gardencorev1beta1.LastOperationStateSucceeded
 }
 
+// ShootCreationSucceeded is a helper function for checking whether the Shoot's initial Create operation
+// just transitioned from Processing to Succeeded.
+func ShootCreationSucceeded(oldLastOperation, newLastOperation *gardencorev1beta1.LastOperation) bool {
+	return oldLastOperation != nil &&
+		oldLastOperation.Type == gardencorev1beta1.LastOperationTypeCreate &&
+		oldLastOperation.State == gardencorev1beta1.LastOperationStateProcessing &&
+		newLastOperation != nil &&
+		newLastOperation.Type == gardencorev1beta1.LastOperationTypeCreate &&
+		newLastOperation.State == gardencorev1beta1.LastOperationStateSucceeded
+}
+
 func lastOperationStateFailed(lastOperation *gardencorev1beta1.LastOperation) bool {
 	if lastOperation == nil {
 		return false
