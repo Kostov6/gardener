@@ -81,11 +81,11 @@ echo "> Waiting until the Shoot is reconciled..."
 KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" NAMESPACE=garden ./hack/usage/wait-for.sh shoot root GardenletReady APIServerAvailable EveryNodeReady BackupBucketsReady
 
 echo "> Waiting until the ShootState is created..."
-for i in {1..18}; do
+for i in {1..6}; do
   if kubectl --kubeconfig "$VIRTUAL_GARDEN_KUBECONFIG" -n garden get shootstate root &> /dev/null; then
     break
   fi
-  if [[ $i -eq 18 ]]; then
+  if [[ $i -eq 6 ]]; then
     echo "ERROR: garden/root ShootState was not created in time." >&2
     exit 1
   fi

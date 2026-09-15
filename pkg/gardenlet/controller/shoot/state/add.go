@@ -48,28 +48,47 @@ func (r *Reconciler) AddToManager(mgr manager.Manager, gardenCluster, seedCluste
 			source.Kind[client.Object](gardenCluster.GetCache(),
 				&gardencorev1beta1.Shoot{},
 				&handler.EnqueueRequestForObject{},
-				r.SeedNameChangedPredicate()),
+				predicate.Or(r.SeedNameChangedPredicate(), r.ShootCreationSucceededPredicate())),
 		).
 		Complete(r)
 }
 
 // SeedNameChangedPredicate returns a predicate which returns true for all events except updates - here it only returns
-// true when the seed name changed or the shoot's initial creation reconciliation finished successfully.
+// true when the seed name changed.
 func (r *Reconciler) SeedNameChangedPredicate() predicate.Predicate {
 	return predicate.Funcs{
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			shoot, ok := e.ObjectNew.(*gardencorev1beta1.Shoot)
+		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
+			newShoot, ok := updateEvent.ObjectNew.(*gardencorev1beta1.Shoot)
 			if !ok {
 				return false
 			}
 
-			oldShoot, ok := e.ObjectOld.(*gardencorev1beta1.Shoot)
+			oldShoot, ok := updateEvent.ObjectOld.(*gardencorev1beta1.Shoot)
 			if !ok {
 				return false
 			}
 
-			return ptr.Deref(shoot.Spec.SeedName, "") != ptr.Deref(oldShoot.Spec.SeedName, "") ||
-				predicateutils.ShootCreationSucceeded(oldShoot.Status.LastOperation, shoot.Status.LastOperation)
+			return ptr.Deref(newShoot.Spec.SeedName, "") != ptr.Deref(oldShoot.Spec.SeedName, "")
+		},
+	}
+}
+
+// ShootCreationSucceededPredicate returns a predicate which returns true for update events where the Shoot's
+// initial Create operation just transitioned from Processing to Succeeded.
+func (r *Reconciler) ShootCreationSucceededPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
+			oldShoot, ok := updateEvent.ObjectOld.(*gardencorev1beta1.Shoot)
+			if !ok {
+				return false
+			}
+
+			newShoot, ok := updateEvent.ObjectNew.(*gardencorev1beta1.Shoot)
+			if !ok {
+				return false
+			}
+
+			return predicateutils.ShootCreationJustSucceeded(oldShoot.Status.LastOperation, newShoot.Status.LastOperation)
 		},
 	}
 }
