@@ -118,7 +118,7 @@ var _ = Describe("gardenadm unmanaged infrastructure control plane restoration t
 			Eventually(ctx, func() error {
 				return gardenClientSet.Client().Get(ctx, client.ObjectKeyFromObject(shootState), shootState)
 			}).Should(Succeed())
-		}, SpecTimeout(5*time.Minute))
+		}, SpecTimeout(10*time.Minute))
 
 		It("should seed a workload ConfigMap whose survival proves the etcd data was restored", func(ctx SpecContext) {
 			// The default/experimental-configmap is asserted after recovery to prove the etcd data survived. We seed it

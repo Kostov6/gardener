@@ -74,6 +74,10 @@ CONNECT_COMMAND=$(KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" ./bin/gardenadm token 
 docker exec -ti gind-machine-0 $(echo $CONNECT_COMMAND)
 
 echo "> Waiting until the Shoot is reconciled..."
+# TODO: Wait for the ControlPlaneHealthy, ObservabilityComponentsHealthy and SystemComponentsHealthy conditions as well when they are healthy.
+# - ControlPlaneHealthy fails with: 'Etcd extension resource "etcd-events" is unhealthy: etcd "etcd-events" is not ready yet'
+# - ObservabilityComponentsHealthy fails with: 'Missing required deployments: [kube-state-metrics]'
+# - SystemComponentsHealthy fails with: 'Deployment "kube-system/calico-typha-deploy" is unhealthy: condition "Progressing" has invalid status False (expected True) due to ProgressDeadlineExceeded: <...>''
 KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" NAMESPACE=garden ./hack/usage/wait-for.sh shoot root GardenletReady APIServerAvailable EveryNodeReady BackupBucketsReady
 
 echo "> Waiting until the ShootState is created..."
@@ -115,6 +119,7 @@ backup_data_path=$(find dev/local-backupbuckets | grep v2$ | grep -v garden)
 docker cp dev/local-backupbuckets gind-machine-0:/local-backupbuckets
 
 echo "> Restoring the control plane Node..."
+# TODO: Check why GRM gets deployed to worker Nodes
 docker exec -ti gind-machine-0 gardenadm restore -d /gardenadm/discover-output --prior-node-name=gind-machine-0 --backup-data-path "/${backup_data_path#dev/}"
 
 echo "> Verifying the control plane Node restoration..."

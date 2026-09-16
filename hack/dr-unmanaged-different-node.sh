@@ -74,6 +74,10 @@ CONNECT_COMMAND=$(KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" ./bin/gardenadm token 
 docker exec -ti gind-machine-0 $(echo $CONNECT_COMMAND)
 
 echo "> Waiting until the Shoot is reconciled..."
+# TODO: Wait for the ControlPlaneHealthy, ObservabilityComponentsHealthy and SystemComponentsHealthy conditions as well when they are healthy.
+# - ControlPlaneHealthy fails with: 'Etcd extension resource "etcd-events" is unhealthy: etcd "etcd-events" is not ready yet'
+# - ObservabilityComponentsHealthy fails with: 'Missing required deployments: [kube-state-metrics]'
+# - SystemComponentsHealthy fails with: 'Deployment "kube-system/calico-typha-deploy" is unhealthy: condition "Progressing" has invalid status False (expected True) due to ProgressDeadlineExceeded: <...>''
 KUBECONFIG="$VIRTUAL_GARDEN_KUBECONFIG" NAMESPACE=garden ./hack/usage/wait-for.sh shoot root GardenletReady APIServerAvailable EveryNodeReady BackupBucketsReady
 
 echo "> Waiting until the ShootState is created..."

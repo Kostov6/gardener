@@ -77,6 +77,7 @@ func (r *Reconciler) SeedNameChangedPredicate() predicate.Predicate {
 // initial Create operation just transitioned from Processing to Succeeded.
 func (r *Reconciler) ShootCreationSucceededPredicate() predicate.Predicate {
 	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool { return false },
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
 			oldShoot, ok := updateEvent.ObjectOld.(*gardencorev1beta1.Shoot)
 			if !ok {
@@ -88,7 +89,9 @@ func (r *Reconciler) ShootCreationSucceededPredicate() predicate.Predicate {
 				return false
 			}
 
-			return predicateutils.CreationJustSucceeded(oldShoot.Status.LastOperation, newShoot.Status.LastOperation)
+			return predicateutils.CreationSucceeded(oldShoot.Status.LastOperation, newShoot.Status.LastOperation)
 		},
+		DeleteFunc:  func(event.DeleteEvent) bool { return false },
+		GenericFunc: func(event.GenericEvent) bool { return false },
 	}
 }

@@ -186,8 +186,8 @@ func ReconciliationFinishedSuccessfully(oldLastOperation, newLastOperation *gard
 		newLastOperation.State == gardencorev1beta1.LastOperationStateSucceeded
 }
 
-// CreationJustSucceeded returns true when the initial Create operation just transitioned from Processing to Succeeded.
-func CreationJustSucceeded(oldLastOperation, newLastOperation *gardencorev1beta1.LastOperation) bool {
+// CreationSucceeded returns true when the initial Create operation just transitioned from Processing to Succeeded.
+func CreationSucceeded(oldLastOperation, newLastOperation *gardencorev1beta1.LastOperation) bool {
 	return oldLastOperation != nil &&
 		oldLastOperation.Type == gardencorev1beta1.LastOperationTypeCreate &&
 		oldLastOperation.State == gardencorev1beta1.LastOperationStateProcessing &&
