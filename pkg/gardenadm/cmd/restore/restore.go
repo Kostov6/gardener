@@ -63,7 +63,7 @@ func run(ctx context.Context, opts *Options) error {
 	// The ETCD snapshot restored during `gardenadm restore` brings stale resources back to life which must be cleaned
 	// up before the init flow re-reconciles the control plane. BootstrapControlPlane runs these tasks after the
 	// connection to the control plane is established and before the bootstrap secrets are imported.
-	b, err := initcmd.BootstrapControlPlane(ctx, initOpts, opts.BackupDataPath, opts.PriorNodeName)
+	b, err := initcmd.BootstrapControlPlane(ctx, initOpts, opts.BackupDataPath, opts.PriorNodeName, true)
 	if err != nil {
 		return fmt.Errorf("failed to bootstrap control plane (1st recovery phase): %w", err)
 	}
