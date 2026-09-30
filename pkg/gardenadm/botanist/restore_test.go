@@ -128,5 +128,9 @@ var _ = Describe("Restore", func() {
 		It("should succeed when the prior Node is absent (IgnoreNotFound)", func() {
 			Expect(b.DeletePriorNodeAndPodsRunningOnIt(ctx, realClient, priorNodeName)).To(Succeed())
 		})
+
+		It("should error when priorNodeName is empty", func() {
+			Expect(b.DeletePriorNodeAndPodsRunningOnIt(ctx, realClient, "")).To(MatchError(ContainSubstring("must not be empty")))
+		})
 	})
 })
