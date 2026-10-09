@@ -14,7 +14,6 @@ import (
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
@@ -103,7 +102,7 @@ func (b *GardenadmBotanist) DeletePriorNodeAndPodsRunningOnIt(ctx context.Contex
 		}
 
 		b.Logger.Info("Force deleting Pod", "pod", client.ObjectKeyFromObject(&pod), "nodeName", pod.Spec.NodeName)
-		options := &client.DeleteOptions{GracePeriodSeconds: ptr.To[int64](0), PropagationPolicy: ptr.To(metav1.DeletePropagationBackground)}
+		options := &client.DeleteOptions{GracePeriodSeconds: new(int64(0)), PropagationPolicy: new(metav1.DeletePropagationBackground)}
 		if err := realClient.Delete(ctx, pod.DeepCopy(), options); client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("failed force deleting Pod %s: %w", client.ObjectKeyFromObject(&pod), err)
 		}
@@ -197,7 +196,7 @@ func (b *GardenadmBotanist) DeleteExtensionWorkloads(ctx context.Context, realCl
 // Pod still exists. The workloadKind argument is only used for log messages and error context.
 func (b *GardenadmBotanist) deleteWorkloadOwnerChain(ctx context.Context, realClient client.Client, workloadKind, namespace string, matchingLabels client.MatchingLabels) error {
 	orphan := client.PropagationPolicy(metav1.DeletePropagationOrphan)
-	forceDelete := &client.DeleteAllOfOptions{DeleteOptions: client.DeleteOptions{GracePeriodSeconds: ptr.To[int64](0), PropagationPolicy: ptr.To(metav1.DeletePropagationBackground)}}
+	forceDelete := &client.DeleteAllOfOptions{DeleteOptions: client.DeleteOptions{GracePeriodSeconds: new(int64(0)), PropagationPolicy: new(metav1.DeletePropagationBackground)}}
 
 	deleteOpts := func(extra client.DeleteAllOfOption) []client.DeleteAllOfOption {
 		opts := []client.DeleteAllOfOption{client.InNamespace(namespace)}
